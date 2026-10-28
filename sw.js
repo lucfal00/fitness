@@ -1,6 +1,6 @@
 // Offline support. Pages: network first (a new version shows on the next launch), cache when offline.
 // Other files: answer from cache, refresh the cache in the background.
-const CACHE = 'fitness-v3';
+const CACHE = 'fitness-v4';
 const FILES = [
   './', './index.html', './style.css', './manifest.webmanifest',
   './js/app.js', './js/store.js', './js/logic.js', './js/metrics.js', './js/merge.js', './js/library.js', './js/crypto.js',
@@ -8,8 +8,8 @@ const FILES = [
   './js/views/today.js', './js/views/session.js', './js/views/calendar.js', './js/views/program-edit.js',
   './js/views/templates.js', './js/views/template-edit.js', './js/views/exercises.js', './js/views/progress.js', './js/views/progress-data.js', './js/views/session-rows.js',
   './js/views/exercise-detail.js', './js/views/body.js', './js/views/settings.js',
-  './icons/fitness-v3-192.png', './icons/fitness-v3-512.png',
-  './icons/fitness-v3-maskable-512.png', './icons/fitness-v3-apple-180.png',
+  './icons/fitness-v4-192.png', './icons/fitness-v4-512.png',
+  './icons/fitness-v4-maskable-512.png', './icons/fitness-v4-apple-180.png',
 ];
 const PAGE_TIMEOUT_MS = 3000;
 

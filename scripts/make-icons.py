@@ -1,7 +1,8 @@
-# Generates icons/fitness-v3-*.png from design/fitness-icon-source.webp (needs Python 3 + Pillow).
-# The figure is separated from the source's background, then composited on a fresh diagonal gradient:
-# "any" icons keep transparent rounded corners like Habits; maskable/apple are full-bleed with the
-# figure shrunk into the safe zone. Change TL/BR to recolour. Run: python scripts/make-icons.py
+# Generates icons/fitness-v4-*.png from design/fitness-icon-source.webp (needs Python 3 + Pillow).
+# The figure is separated from the source's background, cropped to the bust (head to hips, fading
+# out at the bottom) and composited with a margin on a fresh diagonal gradient: "any" icons keep
+# transparent rounded corners like Habits; maskable/apple are full-bleed with a wider margin so the
+# bust stays in the safe zone. Change TL/BR to recolour. Run: python scripts/make-icons.py
 from pathlib import Path
 from PIL import Image, ImageDraw
 
@@ -10,6 +11,9 @@ SRC = ROOT / 'design' / 'fitness-icon-source.webp'
 OUT = ROOT / 'icons'
 TL, BR = (142, 220, 120), (47, 143, 74)          # gradient, top-left → bottom-right (as Habits/Atlas)
 W = 1024                                         # working size (supersampled)
+BUST_BOTTOM = 620                                # crop line in working px (hips, hands included)
+FADE = 0.08                                      # bottom fraction of the bust that fades out
+MARGIN, MARGIN_FULL = 0.16, 0.22                 # per side: rounded icons / full-bleed icons
 
 
 def tile_box(im):
@@ -63,16 +67,39 @@ def gradient():
     return g
 
 
-def icon(fig, size, full_bleed):
+def opaque_box(im):
+    return im.getchannel('A').point(lambda a: 255 if a > 40 else 0).getbbox()
+
+
+def bust(fig):
+    """Head-to-hips crop of the figure, fading out over the bottom FADE, trimmed to its content."""
+    top = opaque_box(fig)[1]
+    b = fig.crop((0, top, W, BUST_BOTTOM))
+    alpha = b.getchannel('A')
+    px, h = alpha.load(), b.height
+    f = round(h * FADE)
+    for y in range(h - f, h):
+        k = (h - y) / f
+        for x in range(W):
+            px[x, y] = round(px[x, y] * k)
+    b.putalpha(alpha)
+    return b.crop(opaque_box(b))
+
+
+def place(bg, b, margin):
+    box = W * (1 - 2 * margin)
+    s = min(box / b.width, box / b.height)
+    b = b.resize((round(b.width * s), round(b.height * s)), Image.LANCZOS)
+    bg.alpha_composite(b, ((W - b.width) // 2, (W - b.height) // 2 + round(W * 0.02)))
+
+
+def icon(b, size, full_bleed):
     bg = gradient()
     if full_bleed:
-        k = 0.8                                   # fits the 80 % safe circle
-        small = fig.resize((round(W * k), round(W * k)), Image.LANCZOS)
-        off = (W - small.width) // 2
-        bg.alpha_composite(small, (off, off))
+        place(bg, b, MARGIN_FULL)
         out = bg
     else:
-        bg.alpha_composite(fig)
+        place(bg, b, MARGIN)
         mask = Image.new('L', (W, W), 0)
         inset = round(W / 100)                    # Habits: tile at 1..99 of 100, rx 23
         ImageDraw.Draw(mask).rounded_rectangle((inset, inset, W - inset - 1, W - inset - 1),
@@ -83,10 +110,10 @@ def icon(fig, size, full_bleed):
 
 
 def main():
-    fig = extract_figure(Image.open(SRC))
-    for name, size, full in [('fitness-v3-192.png', 192, False), ('fitness-v3-512.png', 512, False),
-                             ('fitness-v3-maskable-512.png', 512, True), ('fitness-v3-apple-180.png', 180, True)]:
-        icon(fig, size, full).save(OUT / name, optimize=True)
+    b = bust(extract_figure(Image.open(SRC)))
+    for name, size, full in [('fitness-v4-192.png', 192, False), ('fitness-v4-512.png', 512, False),
+                             ('fitness-v4-maskable-512.png', 512, True), ('fitness-v4-apple-180.png', 180, True)]:
+        icon(b, size, full).save(OUT / name, optimize=True)
         print('wrote icons/' + name)
 
 

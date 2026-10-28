@@ -258,8 +258,8 @@ Solo set `done` e non `w`:
 index.html              shell + tab bar
 style.css               stile, token colore, tema chiaro/scuro
 manifest.webmanifest    nome "Fitness", icone, display standalone, scope "./"
-sw.js                   offline, cache "fitness-v3"
-icons/                  fitness-v3-192.png, -512.png, -maskable-512.png, -apple-180.png
+sw.js                   offline, cache "fitness-v4"
+icons/                  fitness-v4-192.png, -512.png, -maskable-512.png, -apple-180.png
 js/app.js               avvio, router hash, tema, registrazione SW
 js/store.js             unico modulo che scrive su localStorage; CRUD; evento change; backup; scheduling sync
 js/logic.js             date, programma attivo, previsti, rotazione, costanza, serie settimane (puro)
@@ -284,7 +284,7 @@ tests/                  logic, metrics, merge, sync (.test.js, node --test)
   (la vista sessione aggiorna solo la riga modificata per non perdere il focus degli input).
 - **Aspetto**: token e componenti di Habits; accento `--accent: #2f8f4a` (grafici, anelli, icone) e
   `--accent-strong: #267a3e` per pulsanti pieni con testo bianco (contrasto 5,3:1); tema scuro `#8edc78` per entrambi con `--on-accent: #0f1117`.
-  Icona: figura anatomica frontale chiara su sfumatura diagonale verde foglia (`#8edc78 → #2f8f4a`, come Habits e Atlas), da `design/fitness-icon-source.webp` con `scripts/make-icons.py`.
+  Icona: busto anatomico frontale chiaro (testa–fianchi, sfumato in basso, con margine) su sfumatura diagonale verde foglia (`#8edc78 → #2f8f4a`, come Habits e Atlas), da `design/fitness-icon-source.webp` con `scripts/make-icons.py`.
 - Offline: pagine dalla rete (timeout 3 s, poi cache); altri file dalla cache con aggiornamento in background; precache con `cache: 'reload'`.
 
 ## 9. Convivenza con Habits
