@@ -254,7 +254,7 @@ details .rows li { padding-left: 0; padding-right: 0; }
 .pick input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .seg { display: flex; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
 .seg .pick { flex: 1; }
-.seg .pick span { display: block; text-align: center; padding: 10px 6px; border-radius: 9px; font-weight: 600; font-size: .9rem; color: var(--muted); cursor: pointer; }
+.seg .pick span { display: block; text-align: center; padding: 12px 6px; border-radius: 9px; font-weight: 600; font-size: .9rem; color: var(--muted); cursor: pointer; }
 .seg .pick input:checked + span { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
 .seg .pick input:focus-visible + span, .swatches .pick input:focus-visible + span, .days-row .pick input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .swatches, .days-row, .emoji-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -294,6 +294,7 @@ details .rows li { padding-left: 0; padding-right: 0; }
 }
 .chip.on { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); font-weight: 600; }
 .chip.static { cursor: default; }
+.chip[data-addcell] { min-width: 44px; justify-content: center; }
 .chip small { color: inherit; opacity: .7; }
 .rpe { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }                 /* RPE 1..10 */
 .rpe .chip { justify-content: center; padding: 7px 0; font-weight: 600; min-width: 44px; }
@@ -354,7 +355,7 @@ details .rows li { padding-left: 0; padding-right: 0; }
 }
 .stepper button:disabled, .check:disabled { opacity: .45; cursor: default; }
 .stepper button:active, .check:active { transform: scale(.92); }
-.stepper .val { display: grid; justify-items: center; width: 3em; cursor: text; }
+.stepper .val { display: grid; justify-items: center; align-content: center; width: 3em; min-height: 44px; cursor: text; }
 .stepper .val.wide { width: 4em; }
 .stepper .val input {
   width: 100%; min-width: 0; padding: 2px 0; border: 0; border-radius: 6px; background: transparent;
@@ -507,3 +508,9 @@ details .rows li { padding-left: 0; padding-right: 0; }
   .body-grid > .card { margin: 0; }
   .body-grid > .st-wide { grid-column: 1 / -1; }
 }
+
+/* 320 px: seven 44 px columns do not fit inside the 16 px gutters, so week strip and month grid use the full width. */
+@media (max-width: 340px) {
+  .week, .cal { gap: 0; margin-left: -10px; margin-right: -10px; }
+}
+.settings small a { display: inline-block; padding: 13px 0; }
