@@ -63,7 +63,7 @@ Se dimentichi la password la copia sul Gist non è recuperabile (i dati sui disp
 
 Dopo un push su GitHub la pagina arriva sempre dalla rete quando sei online, gli altri file si aggiornano in background:
 chiudi e riapri l'app un paio di volte (GitHub Pages può impiegare fino a 10 minuti).
-Se aggiungi nuovi file all'app, elencali in `FILES` dentro `sw.js` e incrementa `CACHE` (ora `fitness-v4`, poi `fitness-v5`…).
+Se aggiungi nuovi file all'app, elencali in `FILES` dentro `sw.js` e incrementa `CACHE` (ora `fitness-v5`, poi `fitness-v6`…).
 
 **Nuova icona:** i dispositivi la memorizzano per nome file, quindi un nuovo disegno va generato con un nome nuovo:
 `npm run icons` (= `python scripts/make-icons.py`, richiede Python 3 e Pillow) la rigenera da `design/fitness-icon-source.webp`

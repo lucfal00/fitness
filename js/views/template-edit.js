@@ -1,21 +1,19 @@
-// "Scheda": create / edit a workout template (items, sets, supersets), with validation.
+// "Giorno" (#scheda/<id>/giorno/<tplId|nuovo>): day editor of a scheda (items, sets, supersets), with validation.
 import { resolveExercise, listExercises } from '../library.js';
 import {
-  getDoc, saveTemplate, deleteTemplate, archiveTemplate, duplicateTemplate, isReadOnly,
+  getDoc, saveSchedaDay, addSchedaDay, isReadOnly,
 } from '../store.js';
-import { esc, safeColor, fmtKg, fmtDuration, parseNum, COLORS } from '../ui.js';
+import { esc, fmtKg, fmtDuration, parseNum } from '../ui.js';
 import {
   openSheet, openExerciseSheet, filterBar, bindFilterBar, filterExercises, exerciseMeta,
 } from './exercises.js';
-
-const EMOJIS = ['💪', '🏋️', '🦵', '🏃', '🚴', '🧘', '🔥', '⚡', '🥊', '🏊', '🤸', '🎯'];
 
 // Unsaved form state lives here (not in the DOM), so store events that redraw the view never lose it.
 let draft = null;
 let refresh = () => {};
 if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', () => {
-    if (!location.hash.startsWith('#scheda/')) draft = null;
+    if (!location.hash.includes('/giorno/')) draft = null;
   });
 }
 
@@ -65,9 +63,9 @@ function toRow(s, shape) {
   };
 }
 
-function fromTemplate(doc, t) {
+function fromTemplate(doc, t, key) {
   return {
-    key: t.id, id: t.id, name: t.name, emoji: t.emoji || '💪', color: safeColor(t.color),
+    key, id: t.id, name: t.dayName ?? t.name,
     items: t.items.map((it, i) => {
       const shape = shapeOf(doc, it.ex);
       return {
@@ -81,9 +79,8 @@ function fromTemplate(doc, t) {
   };
 }
 
-const blank = (doc) => ({
-  key: 'nuova', id: null, name: '', emoji: '💪',
-  color: COLORS[doc.templates.filter((t) => !t.deleted).length % COLORS.length], items: [],
+const blank = (key, p) => ({
+  key, id: null, name: `Giorno ${p.seq.length + 1}`, items: [],
 });
 
 function newItem(doc, ex) {
@@ -124,7 +121,7 @@ function toSet(r, shape) {
 function validate(doc, d) {
   const out = [];
   const name = d.name.trim();
-  if (!name) out.push('Inserisci il nome della scheda.');
+  if (!name) out.push('Inserisci il nome del giorno.');
   else if (name.length > 40) out.push('Il nome può avere al massimo 40 caratteri.');
   if (!d.items.length) out.push('Aggiungi almeno un esercizio.');
   d.items.forEach((it) => {
@@ -157,7 +154,7 @@ function validate(doc, d) {
   return out;
 }
 
-/** Template fields the form edits (never a whole stale clone: saveTemplate merges with Object.assign). */
+/** Day fields the form edits: name and exercises (the look comes from the scheda). */
 function buildFields(doc, d) {
   let n = 0;
   let cur = null;
@@ -178,9 +175,7 @@ function buildFields(doc, d) {
       sets: it.sets.map((r) => toSet(r, shape)),
     };
   });
-  return {
-    ...(d.id ? { id: d.id } : {}), name: d.name.trim(), emoji: d.emoji.trim() || '💪', color: d.color, items,
-  };
+  return { dayName: d.name.trim(), items };
 }
 
 // ---- Rendering --------------------------------------------------------------
@@ -277,30 +272,29 @@ function addItem(id) {
 }
 
 export function render(el, ctx) {
-  const { doc, param } = ctx;
+  const { doc, param, schedaId } = ctx;
   refresh = ctx.refresh;
-  const t = param === 'nuova' ? null : doc.templates.find((x) => x.id === param && !x.deleted);
-  if (param !== 'nuova' && !t) {
+  const p = doc.programs.find((x) => x.id === schedaId && !x.deleted && x.kind === 'rotation');
+  if (!p) {
     location.hash = '#schede';
     return;
   }
-  if (!draft || draft.key !== param) draft = t ? fromTemplate(doc, t) : blank(doc);
+  const back = `#scheda/${encodeURIComponent(p.id)}`;
+  const t = param === 'nuovo' ? null : doc.templates.find((x) => x.id === param && !x.deleted && x.scheda === p.id);
+  if (param !== 'nuovo' && !t) {
+    location.hash = back;
+    return;
+  }
+  const key = `${p.id}/${param}`;
+  if (!draft || draft.key !== key) draft = t ? fromTemplate(doc, t, key) : blank(key, p);
   const d = draft;
   const ro = isReadOnly();
 
   el.innerHTML = `
-    <header class="top"><a class="back" href="#schede">‹ Schede</a></header>
-    <h1 style="margin-bottom:16px">${t ? 'Modifica scheda' : 'Nuova scheda'}</h1>
+    <header class="top"><a class="back" href="${back}">‹ ${esc(p.name)}</a></header>
+    <h1 style="margin-bottom:16px">${t ? 'Modifica giorno' : 'Nuovo giorno'}</h1>
     <div class="card form">
-      <label class="field">Nome<input data-f="name" maxlength="40" value="${esc(d.name)}" placeholder="Es. Push" autocomplete="off"></label>
-      <fieldset><legend>Emoji</legend>
-        <div class="emoji-row">${EMOJIS.map((x) => `<button type="button" data-emoji="${x}" class="${x === d.emoji ? 'on' : ''}" aria-label="Usa ${x}">${x}</button>`).join('')}</div>
-        <input data-f="emoji" maxlength="8" value="${esc(d.emoji)}" aria-label="Emoji personalizzata">
-      </fieldset>
-      <fieldset><legend>Colore</legend>
-        <div class="swatches">${COLORS.map((c, i) => `<label class="pick"><input type="radio" name="color" data-f="color" value="${c}"
-          ${c === d.color ? 'checked' : ''} aria-label="Colore ${i + 1}"><span style="--sw:${c}"></span></label>`).join('')}</div>
-      </fieldset>
+      <label class="field">Nome del giorno<input data-f="name" maxlength="40" value="${esc(d.name)}" placeholder="Es. Giorno 1" autocomplete="off"></label>
     </div>
     <h2 class="list-title">Esercizi</h2>
     ${d.items.map((it, i) => itemCard(doc, d, it, i)).join('')}
@@ -309,10 +303,6 @@ export function render(el, ctx) {
       <div class="errors" role="alert"></div>
       ${ro ? '<p class="error">Modalità sola lettura: impossibile salvare.</p>' : ''}
       <button type="button" class="btn primary block" data-act="save">Salva</button>
-      ${t ? `<div class="danger-zone">
-        <button type="button" class="btn" data-act="dup" ${ro ? 'disabled' : ''}>Duplica</button>
-        <button type="button" class="btn" data-act="archive" ${ro ? 'disabled' : ''}>${t.archived ? 'Ripristina' : 'Archivia'}</button>
-        <button type="button" class="btn danger" data-act="delete" ${ro ? 'disabled' : ''}>Elimina</button></div>` : ''}
     </div>`;
 
   const save = el.querySelector('[data-act=save]');
@@ -326,12 +316,8 @@ export function render(el, ctx) {
 
   el.oninput = (e) => {
     const f = e.target.dataset;
-    if (f.f) {
-      if (f.f === 'color') { if (e.target.checked) d.color = e.target.value; } else {
-        d[f.f] = e.target.value;
-        if (f.f === 'emoji') el.querySelectorAll('[data-emoji]').forEach((b) => b.classList.toggle('on', b.dataset.emoji === d.emoji));
-      }
-    } else if (f.i !== undefined) {
+    if (f.f) d[f.f] = e.target.value;
+    else if (f.i !== undefined) {
       const it = d.items[+f.i];
       if (f.k === 'link') {
         it.link = e.target.checked;
@@ -350,12 +336,6 @@ export function render(el, ctx) {
     const i = +b.dataset.i;
     const it = d.items[i];
     const { act } = b.dataset;
-    if (b.dataset.emoji) {
-      d.emoji = b.dataset.emoji;
-      el.querySelector('[data-f=emoji]').value = d.emoji;
-      el.querySelectorAll('[data-emoji]').forEach((x) => x.classList.toggle('on', x === b));
-      return;
-    }
     if (act === 'add') { openPicker(); return; }
     if (act === 'addset' || act === 'addwarm') {
       const work = it.sets.filter((s) => !s.w);
@@ -381,27 +361,12 @@ export function render(el, ctx) {
       const lo = Math.min(i, j);
       [lo - 1, lo, lo + 1].forEach((k) => { if (d.items[k]) d.items[k].link = false; });   // moving breaks superset links
     } else if (act === 'save') {
-      if (validate(getDoc(), d).length) return;
-      const id = saveTemplate(buildFields(getDoc(), d));
-      if (id == null) return;
+      if (ro || validate(getDoc(), d).length) return;
+      const fields = buildFields(getDoc(), d);
+      if (t) saveSchedaDay(t.id, fields);
+      else if (addSchedaDay(p.id, fields) == null) return;
       draft = null;
-      location.hash = '#schede';
-      return;
-    } else if (act === 'dup') {
-      const id = duplicateTemplate(t.id);
-      if (id != null) location.hash = `#scheda/${encodeURIComponent(id)}`;
-      return;
-    } else if (act === 'archive') {
-      archiveTemplate(t.id, !t.archived);
-      draft = null;
-      location.hash = '#schede';
-      return;
-    } else if (act === 'delete') {
-      if (confirm(`Eliminare "${t.name}"? Le sessioni già svolte restano nello storico.`)) {
-        deleteTemplate(t.id);
-        draft = null;
-        location.hash = '#schede';
-      }
+      location.hash = back;
       return;
     } else return;
     render(el, ctx);

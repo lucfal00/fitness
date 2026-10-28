@@ -2,6 +2,7 @@
 import { resolveExercise } from '../library.js';
 import { records, pace } from '../metrics.js';
 import { valueLine, barChart } from '../charts.js';
+import { workoutLabel } from '../logic.js';
 import { esc, COLORS, GROUP_LABELS, fmtKg, fmtNum, fmtFull, fmtShort, fmtDuration } from '../ui.js';
 import { exerciseSeries, recordSummary, dated } from './progress-data.js';
 
@@ -63,7 +64,8 @@ export function render(el, { doc, param }) {
   const r = records(doc, ex.id);
   const meta = [KIND[ex.kind], ex.group ? GROUP_LABELS[ex.group] : null].filter(Boolean).join(' · ');
   const rows = [...list].reverse().map((s) => `<li><a class="row" href="#sessione/${encodeURIComponent(s.id)}">
-    <span style="flex:1"><b>${esc(fmtFull(s.date))}</b><small class="muted">${esc(s.text || '–')}</small></span>
+    <span style="flex:1"><b>${esc(fmtFull(s.date))}</b><small class="muted" style="display:block">${esc(workoutLabel(doc, doc.sessions.find((x) => x.id === s.id)?.tpl))}</small>
+      <small class="muted" style="display:block">${esc(s.text || '–')}</small></span>
     <span class="chev" aria-hidden="true">›</span></a></li>`).join('');
   const best = recordSummary(doc, ex.id);
 

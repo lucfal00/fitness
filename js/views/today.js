@@ -1,6 +1,7 @@
-// "Oggi" (#oggi[/AAAA-MM-DD]): day navigation, week strip, planned / open / concluded workouts, body weight.
+// "Oggi" (#oggi[/AAAA-MM-DD]): day navigation, week strip, next scheda day, weekly target, open / concluded workouts, body weight.
 import {
   planned, isPlannedDone, activeProgram, nextRotationIndex, todayKey, addDays, weekStart, isConcluded, toKey, fromKey,
+  weekProgress, workoutLabel, schedaOf,
 } from '../logic.js';
 import { resolveExercise } from '../library.js';
 import { estimateMinutes, sessionVolume, sessionRecords } from '../metrics.js';
@@ -11,17 +12,28 @@ import { unlockAudio, skipRest } from '../timer.js';
 import { esc, safeColor, fmtDay, fmtKg, fmtNum, parseNum, DAY_LETTERS } from '../ui.js';
 import { openSheet } from './exercises.js';
 import { setCounts, fmtMinutes } from './session-rows.js';
+import { isScheda, schedaGroups, schedaDays } from './templates.js';
 
 const WEEK_MS = 7 * 864e5;
 
-const liveTemplates = (doc) => doc.templates.filter((t) => !t.deleted && !t.archived).sort((a, b) => a.order - b.order);
+/** Days one can train: { groups: [{ p, days }] (active scheda first, concluded ones left out), loose: templates without scheda }. */
+function choices(doc, today) {
+  const { active, others } = schedaGroups(doc, today);
+  const groups = [active, ...others].filter(Boolean).map((p) => ({ p, days: schedaDays(doc, p).filter((t) => !t.archived) }));
+  const loose = doc.templates.filter((t) => !t.deleted && !t.archived && !schedaOf(doc, t.id)).sort((a, b) => a.order - b.order);
+  return { groups, loose };
+}
+const liveTemplates = (doc, today) => {
+  const { groups, loose } = choices(doc, today);
+  return [...groups.flatMap((g) => g.days), ...loose];
+};
 const tplOf = (doc, id) => (id ? doc.templates.find((t) => t.id === id) ?? null : null);
 const usable = (doc, id) => doc.templates.some((t) => t.id === id && !t.deleted && !t.archived);
 const sessionHash = (id) => `#sessione/${encodeURIComponent(id)}`;
 
 function look(doc, s) {
   const t = tplOf(doc, s.tpl);
-  return { name: t?.name ?? 'Allenamento libero', emoji: t ? t.emoji || '💪' : '🏋️', color: safeColor(t?.color) };
+  return { name: workoutLabel(doc, s.tpl), emoji: t ? t.emoji || '💪' : '🏋️', color: safeColor(t?.color) };
 }
 
 /** Selected day from the route: a valid date not after today, else today. */
@@ -85,7 +97,7 @@ function exerciseList(doc, t) {
 }
 
 /** Card of a planned (or next rotation) template; action depends on day and status. */
-function tplCard(doc, t, { day, today, title, open, ro }) {
+function tplCard(doc, t, { day, today, kicker, open, ro }) {
   const done = isPlannedDone(doc, day, t.id);
   const mins = estimateMinutes(doc, t, doc.settings.rest);
   const n = t.items.length;
@@ -97,7 +109,7 @@ function tplCard(doc, t, { day, today, title, open, ro }) {
   else action = `<span class="status">Non svolto</span><button type="button" class="btn small" data-act="addpast" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>Registra</button>`;
   return `<section class="card tpl-card${done ? ' done' : ''}" style="--c:${safeColor(t.color)}">
     <div class="head"><span class="badge" aria-hidden="true">${esc(t.emoji || '💪')}</span>
-      <div class="grow"><b>${title ? `${esc(title)} ` : ''}${esc(t.name)}</b><small class="muted">${meta}</small></div></div>
+      <div class="grow"><b>${esc(workoutLabel(doc, t.id))}</b><small class="muted">${kicker ? `${esc(kicker)} · ` : ''}${meta}</small></div></div>
     ${exerciseList(doc, t)}
     <div class="card-actions">${action}</div>
   </section>`;
@@ -150,15 +162,19 @@ function backupNotice(doc) {
 
 // ---- Sheets -----------------------------------------------------------------------------
 
-function tplButton(t) {
+function tplButton(t, label, tag = '') {
   return `<button type="button" class="btn choice-btn" data-tpl="${esc(t.id)}"><span class="badge" style="--c:${safeColor(t.color)}"
-    aria-hidden="true">${esc(t.emoji || '💪')}</span><span>${esc(t.name)}</span></button>`;
+    aria-hidden="true">${esc(t.emoji || '💪')}</span><span class="grow">${esc(label)}</span>${tag ? `<span class="pill">${esc(tag)}</span>` : ''}</button>`;
 }
 
-/** "Allenati comunque" / "Altro allenamento": any active template or a free workout. */
-function openPicker(doc) {
+/** "Allenati comunque" / "Altro allenamento": schede with their days, or a free workout. */
+function openPicker(doc, today, nextId) {
+  const { groups, loose } = choices(doc, today);
   const { box, close } = openSheet(`<h2>Scegli l’allenamento</h2>
-    ${liveTemplates(doc).map(tplButton).join('')}
+    ${groups.map(({ p, days }) => `<h3 class="sheet-sub">${esc(p.emoji || '💪')} ${esc(p.name)}</h3>
+      ${days.length ? days.map((t) => tplButton(t, t.dayName ?? t.name, t.id === nextId ? 'Prossimo' : '')).join('')
+    : '<p class="muted">Nessun giorno in questa scheda.</p>'}`).join('')}
+    ${loose.map((t) => tplButton(t, t.name)).join('')}
     <button type="button" class="btn choice-btn" data-tpl=""><span class="badge" aria-hidden="true">🏋️</span><span>Allenamento libero</span></button>
     <button type="button" class="btn center" data-act="cancel">Annulla</button>`);
   box.onclick = (e) => {
@@ -205,8 +221,8 @@ function start(tpl) {
 }
 
 /** Past day: template (or free) + minutes, then the created (concluded) session opens for editing. */
-function openAddPast(doc, day, preset = null) {
-  const list = liveTemplates(doc);
+function openAddPast(doc, day, today, preset = null) {
+  const list = liveTemplates(doc, today);
   const sel = preset && list.some((t) => t.id === preset) ? preset : '';
   const minsOf = (id) => {
     const t = list.find((x) => x.id === id);
@@ -219,7 +235,7 @@ function openAddPast(doc, day, preset = null) {
     <p class="muted">${esc(fmtDay(day))}</p>
     <form class="form" novalidate>
       <fieldset><legend>Scheda</legend>
-        ${list.map((t) => opt(t.id, t.emoji || '💪', t.name, safeColor(t.color))).join('')}
+        ${list.map((t) => opt(t.id, t.emoji || '💪', workoutLabel(doc, t.id), safeColor(t.color))).join('')}
         ${opt('', '🏋️', 'Allenamento libero', safeColor(null))}
       </fieldset>
       <label class="field">Durata (minuti)<input name="min" type="text" inputmode="numeric" value="${minsOf(sel)}" autocomplete="off"></label>
@@ -257,45 +273,74 @@ function openAddPast(doc, day, preset = null) {
 
 // ---- Render --------------------------------------------------------------------------------
 
+/** "x/N questa settimana": small progress row under the day's card. */
+function weekGoal({ done, target }) {
+  const shown = Math.min(done, target);
+  return `<div class="week-goal"><span><b>${done}/${target}</b> questa settimana${done >= target ? ' ✓' : ''}</span>
+    <span class="bar" role="progressbar" aria-label="Allenamenti della settimana" aria-valuemin="0" aria-valuemax="${target}"
+      aria-valuenow="${shown}"><i style="width:${Math.round((shown / target) * 100)}%"></i></span></div>`;
+}
+
+/** First day after `day` (within two weeks) with a planned workout: { d, id }, else null. */
+function upcoming(doc, day, today) {
+  for (let k = 1; k <= 14; k++) {
+    const d = addDays(day, k);
+    const q = planned(doc, d, today);
+    if (q.count) return { d, id: q.items[0] ?? null };
+  }
+  return null;
+}
+
 export function render(el, { doc, param, today }) {
   const day = dayOf(param, today);
   const ro = isReadOnly();
   const isToday = day === today;
   const title = isToday ? 'Oggi' : day === addDays(today, -1) ? 'Ieri' : fmtDay(day).split(' ')[0];
-  const templates = liveTemplates(doc);
+  const { groups, loose } = choices(doc, today);
   const openSessions = doc.sessions.filter((s) => !s.deleted && s.end == null).sort((a, b) => b.start - a.start);
   const doneToday = doc.sessions.filter((s) => isConcluded(s) && s.date === day).sort((a, b) => a.start - b.start);
   const p = planned(doc, day, today);
   const openFor = (id) => (isToday ? openSessions.find((s) => s.tpl === id && s.date === day) : null);
 
-  // Rotation without training days: suggest the next template of the sequence (today only).
+  // Rotation without training days: suggest the next day of the sequence (today only).
   const prog = activeProgram(doc, day);
+  const scheda = isScheda(prog) ? prog : null;
   let next = null;
   if (isToday && prog?.kind === 'rotation' && !prog.days && prog.seq.length) {
     const id = prog.seq[nextRotationIndex(doc, prog)];
     if (usable(doc, id) && !p.items.includes(id)) next = tplOf(doc, id);
   }
+  // Scheda with preferred days and no workout today: rest, and which day comes next.
+  const rest = isToday && scheda?.days && !p.count && !next ? upcoming(doc, day, today) : null;
+  const nextId = next?.id ?? rest?.id ?? (scheda ? scheda.seq[nextRotationIndex(doc, scheda)] : null);
+  const goal = isToday && scheda ? weekProgress(doc, today) : null;
 
   let main = '';
-  if (!templates.length && !p.count) {
+  if (!groups.length && !loose.length && !p.count && !doc.programs.some(isScheda)) {
     main = `<div class="card empty"><p>Nessuna scheda ancora.</p>
-      <p class="muted">Crea la prima scheda per pianificare e registrare i tuoi allenamenti.</p>
-      <div class="btn-row center"><a class="btn primary" href="#scheda/nuova">+ Crea la prima scheda</a>
+      <p class="muted">Una scheda raccoglie i tuoi giorni di allenamento e li propone a rotazione.</p>
+      <div class="btn-row center"><a class="btn primary" href="#scheda/nuova">Crea la tua prima scheda</a>
       ${isToday ? `<button type="button" class="btn" data-act="free" ${ro ? 'disabled' : ''}>Allenamento libero</button>` : ''}</div></div>`;
   } else {
     main += p.items.map((id) => tplCard(doc, tplOf(doc, id), { day, today, open: openFor(id), ro })).join('');
     if (p.count > p.items.length) {                           // past rotation day: only the number is known
       const ok = doneToday.length >= p.count;
       main += `<section class="card tpl-card${ok ? ' done' : ''}"><div class="head"><span class="badge" aria-hidden="true">🔁</span>
-        <div class="grow"><b>Allenamento previsto</b><small class="muted">Rotazione del programma ${esc(prog?.name ?? '')}</small></div>
+        <div class="grow"><b>Allenamento previsto</b><small class="muted">Scheda ${esc(prog?.name ?? '')}</small></div>
         <span class="status${ok ? ' ok' : ''}">${ok ? '✓ Fatto' : 'Non svolto'}</span></div></section>`;
     }
-    if (next) main += tplCard(doc, next, { day, today, title: 'Prossima:', open: openFor(next.id), ro });
+    if (next) main += tplCard(doc, next, { day, today, kicker: 'Prossimo', open: openFor(next.id), ro });
     if (!p.count && !next) {
+      const msg = !isToday ? 'Nessun allenamento previsto.'
+        : rest ? `Prossimo: ${fmtDay(rest.d)}`
+          : !prog && doc.programs.some(isScheda) ? 'Nessuna scheda attiva.' : 'Nessun allenamento previsto.';
       main += `<section class="card rest-card"><div class="head"><span class="badge" aria-hidden="true">😴</span>
-        <div class="grow"><b>Riposo</b><small class="muted">Nessun allenamento previsto.</small></div></div>
-        ${isToday ? `<button type="button" class="btn primary" data-act="pick" ${ro ? 'disabled' : ''}>Allenati comunque</button>` : ''}</section>`;
-    } else if (isToday) {
+        <div class="grow"><b>${rest ? 'Oggi riposo' : 'Riposo'}</b><small class="muted">${esc(msg)}</small></div></div>
+        ${isToday ? `<div class="card-actions">${!prog && doc.programs.some(isScheda) ? '<a class="btn" href="#schede">Vai alle schede</a>' : ''}
+          <button type="button" class="btn primary" data-act="pick" ${ro ? 'disabled' : ''}>Allenati comunque</button></div>` : ''}</section>`;
+    }
+    if (goal?.target != null) main += weekGoal(goal);
+    if ((p.count || next) && isToday) {
       main += `<button type="button" class="btn block other-btn" data-act="pick" ${ro ? 'disabled' : ''}>+ Altro allenamento</button>`;
     }
   }
@@ -326,8 +371,8 @@ export function render(el, { doc, param, today }) {
     else if (act === 'free') start(null);
     else if (act === 'pick') {
       unlockAudio();
-      openPicker(doc);
-    } else if (act === 'addpast') openAddPast(doc, day, b.dataset.tpl ?? null);
+      openPicker(doc, today, nextId);
+    } else if (act === 'addpast') openAddPast(doc, day, today, b.dataset.tpl ?? null);
     else if (act === 'backup') {
       try { await exportBackup(); } catch { /* retry from Impostazioni */ }
     }

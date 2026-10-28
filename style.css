@@ -314,7 +314,10 @@ details .rows li { padding-left: 0; padding-right: 0; }
 /* ---- Live session --------------------------------------------------- */
 .sess-head { display: flex; align-items: center; gap: 12px; margin: 8px 0 12px; min-height: 44px; }
 .sess-head .grow { flex: 1; min-width: 0; }
-.sess-head h1 { font-size: 1.3rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess-head h1 {                                           /* "Scheda · Giorno" can be long: up to two lines */
+  font-size: 1.3rem; line-height: 1.2; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+}
 .sess-timer { display: block; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--muted); }
 .ex-card { padding: 12px; }
 .ex-card .ex-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
@@ -449,6 +452,31 @@ details .rows li { padding-left: 0; padding-right: 0; }
 .wk-row .chips { flex: 1; min-width: 0; }
 .tpl-chip { border-left: 5px solid var(--c, var(--accent)); max-width: 100%; text-align: left; }
 .rows.seq li { padding-left: 0; padding-right: 0; }
+
+/* ---- Schede --------------------------------------------------------- */
+.pill {
+  flex: none; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 700; white-space: nowrap;
+  background: color-mix(in srgb, var(--ok) 18%, var(--card)); color: color-mix(in srgb, var(--ok) 70%, var(--text));
+}
+.rows a.row .pill { margin-left: auto; }
+.day-list li { flex-wrap: wrap; padding-left: 0; padding-right: 0; row-gap: 4px; }
+.day-row a.row { flex: 1 1 100%; }
+.day-row .chev { margin-left: auto; color: var(--muted); font-size: 1.4rem; }
+.day-row .badge { font-size: 1rem; font-weight: 700; }
+.day-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; }
+.day-actions .btn.small { flex: none; }
+.pw-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pw-row .val { font-size: 1.1rem; }
+.sched-box { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+.sched-box .grow { flex: 1; min-width: 0; }
+.sched-box small { display: block; }
+.sched-box .chev { color: var(--muted); font-size: 1.4rem; }
+.week-goal { display: flex; align-items: center; gap: 12px; margin: 0 4px 12px; font-size: .9rem; color: var(--muted); }
+.week-goal b { color: var(--text); }
+.week-goal .bar { flex: 1; min-width: 3rem; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.week-goal .bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent-strong); }
+.sheet-sub { margin: 16px 0 4px; font-size: .95rem; }
+.choice-btn .grow { flex: 1; min-width: 0; text-align: left; }
 
 /* ---- Stats / charts ------------------------------------------------- */
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }

@@ -5,21 +5,29 @@ import { initTooltips, hideTip } from './charts.js';
 import * as today from './views/today.js';
 import * as session from './views/session.js';
 import * as calendar from './views/calendar.js';
-import * as programEdit from './views/program-edit.js';
 import * as templates from './views/templates.js';
-import * as templateEdit from './views/template-edit.js';
+import * as schedaEdit from './views/scheda-edit.js';
+import * as dayEdit from './views/template-edit.js';
 import * as exercises from './views/exercises.js';
 import * as progress from './views/progress.js';
 import * as exerciseDetail from './views/exercise-detail.js';
 import * as body from './views/body.js';
 import * as settings from './views/settings.js';
 
+// #scheda/<id|nuova> is the scheda editor, #scheda/<id>/giorno/<tplId|nuovo> the day editor.
+const scheda = {
+  render(el, ctx) {
+    const m = /^([^/]+)\/giorno\/([^/]+)$/.exec(ctx.param);
+    if (m) dayEdit.render(el, { ...ctx, schedaId: m[1], param: m[2] });
+    else schedaEdit.render(el, ctx);
+  },
+};
 const views = {
-  oggi: today, sessione: session, calendario: calendar, programma: programEdit, schede: templates, scheda: templateEdit,
+  oggi: today, sessione: session, calendario: calendar, schede: templates, scheda,
   esercizi: exercises, progressi: progress, esercizio: exerciseDetail, corpo: body, impostazioni: settings,
 };
 const TAB_OF = {                                                    // screens without their own tab
-  sessione: 'oggi', programma: 'calendario', scheda: 'schede', esercizi: 'schede', esercizio: 'progressi', corpo: 'progressi',
+  sessione: 'oggi', scheda: 'schede', esercizi: 'schede', esercizio: 'progressi', corpo: 'progressi',
 };
 const main = document.getElementById('view');
 const banner = document.getElementById('banner');
@@ -32,6 +40,10 @@ function route() {
   try {
     param = rest.length ? decodeURIComponent(rest.join('/')) : '';
   } catch { /* malformed escape: no parameter */ }
+  if (name === 'programma') {                 // removed screen: old links go to the schede
+    location.replace('#schede');
+    return { name: 'schede', param: '' };
+  }
   return { name: views[name] ? name : 'oggi', param };
 }
 

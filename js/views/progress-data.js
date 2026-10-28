@@ -1,5 +1,7 @@
 // DOM-free aggregation for the Progressi, exercise detail and Corpo views.
-import { addDays, addMonths, weekStart, monthEnd, fromKey, isConcluded } from '../logic.js';
+import {
+  addDays, addMonths, weekStart, monthEnd, fromKey, isConcluded, workoutLabel,
+} from '../logic.js';
 import { resolveExercise } from '../library.js';
 import { sessionVolume, groupSets, exerciseHistory, records, sessionExerciseStats, pace } from '../metrics.js';
 import { fmtKg, fmtNum, fmtDuration, fmtShort, fmtDay, cap, MONTHS, DAY_SHORT } from '../ui.js';
@@ -129,7 +131,7 @@ export function weekGroupSets(doc, weekFrom) {
 export function sessionNames(doc) {
   const map = {};
   for (const s of concludedSessions(doc)) {
-    const name = s.tpl ? (doc.templates.find((t) => t.id === s.tpl)?.name ?? 'Scheda rimossa') : 'Allenamento libero';
+    const name = s.tpl && !doc.templates.some((t) => t.id === s.tpl) ? 'Scheda rimossa' : workoutLabel(doc, s.tpl);
     (map[s.date] ??= []).push(name);
   }
   return map;

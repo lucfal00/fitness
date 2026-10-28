@@ -1,21 +1,27 @@
-// "Calendario" (#calendario[/AAAA-MM]): month grid with planned / done workouts, day sheet, programs list.
+// "Calendario" (#calendario[/AAAA-MM]): month grid with planned / done workouts, day sheet, active scheda box.
 import {
-  planned, isPlannedDone, addDays, addMonths, monthStart, monthEnd, weekStart, isConcluded, fromKey, toKey,
+  planned, isPlannedDone, addDays, addMonths, monthStart, monthEnd, weekStart, isConcluded, fromKey, toKey, activeProgram,
+  workoutLabel, schedaOf,
 } from '../logic.js';
 import {
-  getDoc, onChange, setPlan, movePlanned, addPastSession, endProgram, isReadOnly,
+  getDoc, onChange, setPlan, movePlanned, addPastSession, isReadOnly,
 } from '../store.js';
 import {
   esc, safeColor, fmtDay, fmtFull, DAY_LETTERS, DAY_SHORT,
 } from '../ui.js';
 import { openSheet } from './exercises.js';
+import { isScheda, schedaMeta, isConcludedScheda } from './templates.js';
 
 const FULL_MONTHS = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto',
   'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
-export const KIND_LABELS = { week: 'Settimana tipo', rotation: 'Rotazione', free: 'Libero' };
 
 const tplOf = (doc, id) => (id ? doc.templates.find((t) => t.id === id) ?? null : null);
-const liveTemplates = (doc) => doc.templates.filter((t) => !t.deleted && !t.archived).sort((a, b) => a.order - b.order);
+/** Days one can plan: live templates, those of concluded schede left out. */
+const liveTemplates = (doc, today) => doc.templates.filter((t) => {
+  if (t.deleted || t.archived) return false;
+  const p = schedaOf(doc, t.id);
+  return !p || !isConcludedScheda(p, today);
+}).sort((a, b) => a.order - b.order);
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && toKey(fromKey(s)) === s;
 
 /** Month key (first day) from the route, else the current month. */
@@ -24,12 +30,12 @@ function monthOf(param, today) {
   return m && +m[2] >= 1 && +m[2] <= 12 ? `${param}-01` : monthStart(today);
 }
 
-/** Rows of buttons (data-tpl) to choose a template; shared with the program form. */
-export function pickerRows(doc) {
-  const list = liveTemplates(doc);
+/** Rows of buttons (data-tpl) to choose a day ("Scheda · Giorno"). */
+function pickerRows(doc, today) {
+  const list = liveTemplates(doc, today);
   if (!list.length) return '<li><span class="muted">Nessuna scheda disponibile.</span></li>';
   return list.map((t) => `<li><button type="button" class="btn" data-tpl="${esc(t.id)}">
-    <span class="badge" style="--c:${safeColor(t.color)}">${esc(t.emoji || '💪')}</span><span>${esc(t.name)}</span></button></li>`).join('');
+    <span class="badge" style="--c:${safeColor(t.color)}">${esc(t.emoji || '💪')}</span><span>${esc(workoutLabel(doc, t.id))}</span></button></li>`).join('');
 }
 
 // ---- Month grid ---------------------------------------------------------------
@@ -100,7 +106,7 @@ function openDay(d, today) {
   closeOpenDay = close;
 
   const back = '<button type="button" class="btn" data-act="back">Indietro</button>';
-  const nameOf = (doc, id) => tplOf(doc, id)?.name ?? 'Scheda rimossa';
+  const nameOf = (doc, id) => (tplOf(doc, id) ? workoutLabel(doc, id) : 'Scheda rimossa');
 
   function main(doc, ro) {
     const p = planned(doc, d, today);
@@ -142,11 +148,11 @@ function openDay(d, today) {
         <button type="button" class="btn primary center" data-act="domove">Sposta</button>${back}`;
     } else if (m.t === 'replace' || m.t === 'add') {
       box.innerHTML = `<h2>${m.t === 'add' ? 'Aggiungi scheda' : `Sostituisci ${esc(nameOf(doc, m.id))}`}</h2>
-        <ul class="rows">${pickerRows(doc)}</ul>${back}`;
+        <ul class="rows">${pickerRows(doc, today)}</ul>${back}`;
     } else if (m.t === 'past') {
       box.innerHTML = `<h2>Aggiungi allenamento svolto</h2>
         <div class="form"><label class="field">Scheda<select name="tpl"><option value="">Allenamento libero</option>
-          ${liveTemplates(doc).map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select></label>
+          ${liveTemplates(doc, today).map((t) => `<option value="${esc(t.id)}">${esc(workoutLabel(doc, t.id))}</option>`).join('')}</select></label>
         <label class="field">Durata (minuti)<input type="text" inputmode="numeric" name="min" value="60" autocomplete="off"></label>
         <p class="error" role="alert" hidden></p></div>
         <button type="button" class="btn primary center" data-act="dopast">Aggiungi</button>${back}`;
@@ -204,35 +210,27 @@ function openDay(d, today) {
   draw();
 }
 
-// ---- Programs -----------------------------------------------------------------
+// ---- Active scheda ------------------------------------------------------------
 
-function period(p) {
-  if (p.from == null) return 'Non attivato';
-  return p.to == null ? `dal ${esc(fmtFull(p.from))}` : `dal ${esc(fmtFull(p.from))} al ${esc(fmtFull(p.to))}`;
-}
-
-function programCard(p, today, ro) {
-  const running = p.from != null && p.from <= today && (p.to == null || p.to >= today);
-  const status = running ? 'In corso' : p.from != null && p.from > today ? 'Programmato' : '';
-  const canEnd = p.from != null && (p.to == null || p.to >= today);
-  return `<div class="card prog-card ${canEnd ? 'active' : ''}" data-id="${esc(p.id)}">
-    <a class="row-link" href="#programma/${encodeURIComponent(p.id)}"><b>${esc(p.name)}</b>
-      <small class="muted">${KIND_LABELS[p.kind] ?? ''} · ${period(p)}${status ? ` · ${status}` : ''}</small></a>
-    ${canEnd ? `<div class="btn-row"><button type="button" class="btn small" data-end="${esc(p.id)}" ${ro ? 'disabled' : ''}>Termina ora</button></div>` : ''}
-  </div>`;
-}
-
-function programs(doc, today, ro) {
-  const live = doc.programs.filter((p) => !p.deleted);
-  const current = live.filter((p) => p.from != null && (p.to == null || p.to >= today)).sort((a, b) => a.from.localeCompare(b.from));
-  const idle = live.filter((p) => p.from == null);
-  const history = live.filter((p) => p.from != null && p.to != null && p.to < today).sort((a, b) => b.to.localeCompare(a.to));
-  const list = (arr) => arr.map((p) => programCard(p, today, ro)).join('');
-  return `<h2 class="list-title">Programmi</h2>
-    ${current.length ? list(current) : '<div class="card"><p class="muted" style="margin:0">Nessun programma attivo.</p></div>'}
-    ${idle.length ? `<h3 class="list-title">Non attivati</h3>${list(idle)}` : ''}
-    ${history.length ? `<h3 class="list-title">Storico</h3>${list(history)}` : ''}
-    <a class="btn primary block" href="#programma/nuovo" style="margin-top:12px">+ Nuovo programma</a>`;
+/** Box under the month: the running scheda with a link to it, or an invitation to pick one. */
+function activeBox(doc, today) {
+  const p = activeProgram(doc, today);
+  if (!p) {
+    return `<h2 class="list-title">Scheda attiva</h2>
+      <div class="card"><p class="muted" style="margin:0 0 12px">Nessuna scheda attiva.</p>
+        <a class="btn block" href="#schede">Vai alle schede</a></div>`;
+  }
+  if (!isScheda(p)) {                                        // older program without an editing screen
+    return `<h2 class="list-title">Scheda attiva</h2>
+      <div class="card"><b>${esc(p.name)}</b><small class="muted" style="display:block">Programma precedente (non modificabile)</small></div>`;
+  }
+  const names = p.days?.length ? `Giorni preferiti: ${p.days.map((g) => DAY_SHORT[g - 1]).join(', ')}` : 'Senza giorni fissi: scegli da Oggi';
+  return `<h2 class="list-title">Scheda attiva</h2>
+    <a class="card prog-card active sched-box" href="#scheda/${encodeURIComponent(p.id)}" style="--c:${safeColor(p.color)}">
+      <span class="badge" aria-hidden="true">${esc(p.emoji || '💪')}</span>
+      <span class="grow"><b>${esc(p.name)}</b><small class="muted">${esc(schedaMeta(doc, p))}</small>
+        <small class="muted">${esc(names)} · dal ${esc(fmtFull(p.from))}</small></span>
+      <span class="chev" aria-hidden="true">›</span></a>`;
 }
 
 // ---- View ---------------------------------------------------------------------
@@ -240,7 +238,6 @@ function programs(doc, today, ro) {
 export function render(el, { doc, param, today }) {
   const ms = monthOf(param, today);
   const link = (m) => `#calendario/${m.slice(0, 7)}`;
-  const ro = isReadOnly();
   el.innerHTML = `
     <header class="top"><div class="grow"><h1>Calendario</h1></div>
       ${ms === monthStart(today) ? '' : '<a class="btn today-btn" href="#calendario">Oggi</a>'}</header>
@@ -251,12 +248,10 @@ export function render(el, { doc, param, today }) {
     ${monthGrid(doc, ms, today)}
     <p class="legend"><span><i style="border:2px solid var(--accent);border-radius:50%"></i>Previsto</span>
       <span><i style="background:var(--accent);border-radius:50%"></i>Fatto</span></p>
-    ${programs(doc, today, ro)}`;
+    ${activeBox(doc, today)}`;
 
   el.onclick = (e) => {
     const cell = e.target.closest('button[data-d]');
-    if (cell) { openDay(cell.dataset.d, today); return; }
-    const end = e.target.closest('button[data-end]');
-    if (end && !ro && confirm('Terminare ora il programma?')) endProgram(end.dataset.end);
+    if (cell) openDay(cell.dataset.d, today);
   };
 }

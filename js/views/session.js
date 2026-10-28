@@ -2,7 +2,7 @@
 // app.js does not redraw this view on its own session's store events: every change patches only what it touched.
 import { resolveExercise, listExercises } from '../library.js';
 import { getDoc, updateSession, finishSession, discardSession, isReadOnly } from '../store.js';
-import { todayKey } from '../logic.js';
+import { todayKey, workoutLabel } from '../logic.js';
 import { sessionVolume, sessionRecords, pace } from '../metrics.js';
 import {
   startRest, adjustRest, skipRest, restState, onRest, unlockAudio, beep, keepAwake,
@@ -36,7 +36,7 @@ const dayHash = (d) => (d === todayKey() ? '#oggi' : `#oggi/${d}`);
 
 function titleOf(doc, s) {
   const t = s.tpl ? doc.templates.find((x) => x.id === s.tpl) : null;
-  return { name: t?.name ?? 'Allenamento libero', emoji: t ? t.emoji || '💪' : '🏋️', color: safeColor(t?.color) };
+  return { name: workoutLabel(doc, s.tpl), emoji: t ? t.emoji || '💪' : '🏋️', color: safeColor(t?.color) };
 }
 
 function headText(s) {
@@ -577,8 +577,8 @@ function openFinish() {
     <div class="form">
       <fieldset><legend>Fatica percepita dell’allenamento (RPE)</legend>${rpeChips(rpe, 'frpe', '')}</fieldset>
       <label class="field">Nota<textarea name="note" rows="2" maxlength="500" placeholder="Com’è andata?">${esc(s.note)}</textarea></label>
-      ${structureChanged(tpl, s) ? `<label class="switch-row"><span>Aggiornare la scheda con queste modifiche?</span>
-        <span class="switch"><input type="checkbox" name="upd" aria-label="Aggiorna la scheda ${esc(tpl.name)}"><span></span></span></label>` : ''}
+      ${structureChanged(tpl, s) ? `<label class="switch-row"><span>Aggiornare il giorno con queste modifiche?</span>
+        <span class="switch"><input type="checkbox" name="upd" aria-label="Aggiorna ${esc(workoutLabel(doc, tpl.id))}"><span></span></span></label>` : ''}
     </div>
     <button type="button" class="btn primary" data-f="save">Salva</button>
     <button type="button" class="btn center" data-f="cancel">Continua l’allenamento</button>`);
