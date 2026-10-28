@@ -121,7 +121,7 @@ Un unico documento JSON in `localStorage` (chiave `fitness.v1`):
   "exercises": [{ "id": "x_8fk2la", "name": "Hip thrust", "kind": "weight", "measure": "reps",
     "group": "glutei", "also": ["femorali"], "deleted": false, "updatedAt": 1798364400000 }],
   "exerciseEdits": { "lib_panca_piana": { "name": "Panca", "hidden": false, "t": 1798364400000 } },
-  "templates": [{ "id": "t_k3j9x2", "name": "Push", "emoji": "💪", "color": "#16a34a",
+  "templates": [{ "id": "t_k3j9x2", "name": "Push", "emoji": "💪", "color": "#c62f3a",
     "order": 0, "archived": false, "deleted": false, "updatedAt": 1798364400000,
     "items": [{ "ex": "lib_panca_piana", "group": "g1", "rest": 90, "note": "",
       "sets": [{ "w": true, "reps": [10, 10], "kg": 40 }, { "reps": [8, 10], "kg": 60 }] }] }],
@@ -258,8 +258,8 @@ Solo set `done` e non `w`:
 index.html              shell + tab bar
 style.css               stile, token colore, tema chiaro/scuro
 manifest.webmanifest    nome "Fitness", icone, display standalone, scope "./"
-sw.js                   offline, cache "fitness-v2"
-icons/                  fitness-v2.svg, -192.png, -512.png, -maskable-512.png, -apple-180.png
+sw.js                   offline, cache "fitness-v3"
+icons/                  fitness-v3-192.png, -512.png, -maskable-512.png, -apple-180.png
 js/app.js               avvio, router hash, tema, registrazione SW
 js/store.js             unico modulo che scrive su localStorage; CRUD; evento change; backup; scheduling sync
 js/logic.js             date, programma attivo, previsti, rotazione, costanza, serie settimane (puro)
@@ -274,7 +274,7 @@ js/timer.js             recupero, suono Web Audio, wake lock
 js/ui.js                escape, formattazione, palette, pulsanti +/−
 js/views/               today, session, templates, template-edit, exercises, calendar,
                         program-edit, progress, exercise-detail, body, settings
-scripts/                serve.mjs, make-icons.mjs (da Habits)
+scripts/                serve.mjs, make-icons.py (Python 3 + Pillow)
 tests/                  logic, metrics, merge, sync (.test.js, node --test)
 ```
 
@@ -282,9 +282,9 @@ tests/                  logic, metrics, merge, sync (.test.js, node --test)
 - `store.js` è l'unico modulo che scrive su `localStorage`; notifica le viste con un evento `change`.
 - Viste: funzione `render(container, state)`; ricostruiscono il proprio contenuto a ogni `change`
   (la vista sessione aggiorna solo la riga modificata per non perdere il focus degli input).
-- **Aspetto**: token e componenti di Habits; accento `--accent: #16a34a` (grafici, anelli, icone) e
-  `--accent-strong: #15803d` per pulsanti pieni con testo bianco (contrasto 5,0:1); tema scuro `#4ade80` per entrambi con `--on-accent: #0f1117`.
-  Icona: riquadro con sfumatura verde chiaro → verde (`#7ee0a1 → #16a34a`) e manubrio color crema `#fffaf4`, stessa geometria di quella di Habits.
+- **Aspetto**: token e componenti di Habits; accento `--accent: #c62f3a` (grafici, anelli, icone) e
+  `--accent-strong: #b3202d` per pulsanti pieni con testo bianco (contrasto 6,6:1); tema scuro `#f07c7c` per entrambi con `--on-accent: #0f1117`.
+  Icona: figura anatomica frontale chiara su sfumatura rossa (`#e75653 → #940319`), da `design/fitness-icon-source.webp` con `scripts/make-icons.py`.
 - Offline: pagine dalla rete (timeout 3 s, poi cache); altri file dalla cache con aggiornamento in background; precache con `cache: 'reload'`.
 
 ## 9. Convivenza con Habits

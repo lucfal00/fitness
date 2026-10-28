@@ -7,8 +7,8 @@
   --line: #e6e8ef;
   --track: #e6e8f0;
   --empty: #f2f3f7;
-  --accent: #16a34a;                /* charts, rings, icons */
-  --accent-strong: #15803d;         /* filled buttons and text links: white text on it = 5.0:1 */
+  --accent: #c62f3a;                /* charts, rings, icons */
+  --accent-strong: #b3202d;         /* filled buttons and text links: white text on it = 6.6:1 */
   --on-accent: #ffffff;
   --danger: #dc3545;
   --ok: #16a34a;
@@ -29,8 +29,8 @@
     --line: #272b37;
     --track: #2b2f3c;
     --empty: #1e212b;
-    --accent: #4ade80;
-    --accent-strong: #4ade80;
+    --accent: #f07c7c;
+    --accent-strong: #f07c7c;
     --on-accent: #0f1117;
     --danger: #ff6b6b;
     --ok: #4ade80;
@@ -49,8 +49,8 @@
   --line: #272b37;
   --track: #2b2f3c;
   --empty: #1e212b;
-  --accent: #4ade80;
-  --accent-strong: #4ade80;
+  --accent: #f07c7c;
+  --accent-strong: #f07c7c;
   --on-accent: #0f1117;
   --danger: #ff6b6b;
   --ok: #4ade80;

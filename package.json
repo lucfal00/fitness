@@ -6,6 +6,6 @@
   "scripts": {
     "test": "node --test \"tests/*.test.js\"",
     "serve": "node scripts/serve.mjs",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "python scripts/make-icons.py"
   }
 }
