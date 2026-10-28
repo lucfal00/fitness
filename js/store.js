@@ -344,7 +344,7 @@ function dayLabel(p, dayName) {
 /** First "Giorno n" not used by a live day of the scheda. */
 function freeDayName(p) {
   const used = new Set(doc.templates.filter((t) => t.scheda === p.id && !t.deleted).map((t) => t.dayName));
-  let n = 1;
+  let n = (p.seq?.length ?? 0) + 1;           // next position first, then the next free number
   while (used.has(`Giorno ${n}`)) n++;
   return `Giorno ${n}`;
 }

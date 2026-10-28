@@ -206,7 +206,7 @@ test('store: saveScheda + addSchedaDay build template days in seq order', async 
   assert.deepEqual(d.programs.find((x) => x.id === sid).seq, [a, b, c]);
   const ts = [a, b, c].map((id) => d.templates.find((t) => t.id === id));
   assert.deepEqual(ts.map((t) => t.scheda), [sid, sid, sid]);
-  assert.deepEqual(ts.map((t) => t.dayName), ['Petto', 'Giorno 1', 'Gambe']);          // first free "Giorno n"
+  assert.deepEqual(ts.map((t) => t.dayName), ['Petto', 'Giorno 2', 'Gambe']);          // "Giorno <position>"
   assert.deepEqual(ts.map((t) => t.name), ['Push Pull · Petto', 'Push Pull · Giorno 1', 'Push Pull · Gambe']);
   assert.equal(ts[0].items.length, 1);
   assert.deepEqual(ts[1].items, []);
@@ -365,8 +365,8 @@ test('store: saveScheda guards, color, propagation; day names, moves and labels'
   const [a, b] = [s.addSchedaDay(sid), s.addSchedaDay(sid)];
   assert.deepEqual([a, b].map((id) => d.templates.find((t) => t.id === id).dayName), ['Giorno 1', 'Giorno 2']);
   s.deleteSchedaDay(a);
-  const c = s.addSchedaDay(sid);                                                  // first unused "Giorno n"
-  assert.equal(d.templates.find((t) => t.id === c).dayName, 'Giorno 1');
+  const c = s.addSchedaDay(sid);                                                  // next position, skipping used names
+  assert.equal(d.templates.find((t) => t.id === c).dayName, 'Giorno 3');
   // only name / emoji / color reach the day templates
   const tb = d.templates.find((t) => t.id === b);
   tb.updatedAt = 1;
