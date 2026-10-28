@@ -42,8 +42,13 @@ export function load() {
     d.settings = { ...emptyDoc().settings, ...d.settings };
     doc = d;
   } catch {
-    try { localStorage.setItem(KEY + '.corrupt', raw); } catch { /* best effort */ }
-    notice = 'I dati salvati erano danneggiati: ne ho conservato una copia e sono ripartito da zero. Puoi importare un backup.';
+    try {
+      localStorage.setItem(KEY + '.corrupt', raw);
+      notice = 'I dati salvati erano danneggiati: ne ho conservato una copia e sono ripartito da zero. Puoi importare un backup.';
+    } catch {
+      readOnly = true;                            // the original must never be overwritten without a copy
+      notice = 'I dati salvati sono danneggiati e non sono riuscito a conservarne una copia: per non perderli, i nuovi dati non verranno salvati.';
+    }
   }
 }
 

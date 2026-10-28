@@ -112,6 +112,18 @@ test('store: corrupt JSON is kept under .corrupt and the doc restarts empty', as
   assert.equal(s.isReadOnly(), false);
 });
 
+test('store: corrupt JSON and the .corrupt copy cannot be written -> read-only, original never overwritten', async () => {
+  const mem = new Map([['fitness.v1', '{not json']]);
+  const s = await freshStore(memStorage(mem, { failSet: true }));
+  assert.equal(s.isReadOnly(), true);
+  assert.match(s.getNotice(), /non sono riuscito a conservarne una copia/);
+  s.saveTemplate({ name: 'X' });
+  s.clearNotice();
+  assert.match(s.getNotice(), /danneggiati/);
+  assert.equal(mem.get('fitness.v1'), '{not json');
+  assert.equal(mem.has('fitness.v1.corrupt'), false);
+});
+
 test('store: quota failure on save -> read-only, banner persists, later mutations ignored', async () => {
   const s = await freshStore(memStorage(new Map(), { failSet: true }));
   s.saveTemplate({ name: 'A' });

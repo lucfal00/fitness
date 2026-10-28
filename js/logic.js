@@ -136,14 +136,14 @@ export function nextRotationIndex(doc, program) {
 
 function plannedRotation(doc, p, d, today) {
   if (!p.days?.includes(weekday(d))) return { items: [], count: 0 };
-  if (d < today) return { items: [], count: 1 };
+  if (d < today) return { items: [], count: usablePositions(doc, p.seq, 0).length ? 1 : 0 };
   const n = nextRotationIndex(doc, p);
   let start = today;
   const done = lastRotationSession(doc, p.id, today);
   if (done) {
     if (d === today) {
       const pos = usablePositions(doc, p.seq, done.rot.i);
-      return { items: pos.length ? [p.seq[pos[0]]] : [], count: 1 };
+      return pos.length ? { items: [p.seq[pos[0]]], count: 1 } : { items: [], count: 0 };
     }
     start = addDays(today, 1);
   }
@@ -153,7 +153,7 @@ function plannedRotation(doc, p, d, today) {
     if (p.days.includes(weekday(k)) && activeProgram(doc, k)?.id === p.id) ahead++;
   }
   const pos = usablePositions(doc, p.seq, n);
-  return { items: pos.length ? [p.seq[pos[ahead % pos.length]]] : [], count: 1 };
+  return pos.length ? { items: [p.seq[pos[ahead % pos.length]]], count: 1 } : { items: [], count: 0 };
 }
 
 /** Planned workouts of day d: { items: template ids, count }. */

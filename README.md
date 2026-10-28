@@ -2,12 +2,12 @@
 
 Diario di allenamento personale, offline, per iPhone e PC. Nessun account: i dati restano sul dispositivo.
 
-- **Pianifica e registra** allenamenti con pesi, corpo libero, cardio e sport. **Template** riutilizzabili e **programmi**
+- **Pianifica e registra** allenamenti con pesi, corpo libero, cardio e sport. **Schede** riutilizzabili e **programmi**
   (settimana tipo con cicli da 1 a 8 settimane, a rotazione o liberi), più modifiche per singolo giorno dal calendario.
-- **Allenamento live**: timer di recupero, riscaldamento, superset, RPE e progressione suggerita.
+- **Allenamento live**: timer di recupero, riscaldamento, superserie, RPE e progressione suggerita.
 - **Progressi**: record personali, grafici per settimana/mese/6 mesi/anno, mappa muscolare.
 - **Corpo**: peso corporeo e misure.
-- **Libreria esercizi**: circa 125 esercizi, tutti modificabili.
+- **Libreria esercizi**: circa 125 esercizi, che si possono rinominare o nascondere; puoi anche creare, modificare ed eliminare esercizi tuoi.
 - **Impostazioni**: tema, passo dei kg, recupero, suono, sincronizzazione, esporta/importa backup.
 
 ## 1. Pubblicazione su GitHub Pages (una volta sola)
@@ -56,6 +56,7 @@ Se dimentichi la password la copia sul Gist non è recuperabile (i dati sui disp
 - **Esporta backup** (Impostazioni): crea il file `fitness-backup-AAAA-MM-GG.json`. Su iPhone scegli "Salva in File" →
   iCloud Drive; su PC salva nella cartella OneDrive.
 - **Importa backup** sull'altro dispositivo: i dati vengono **uniti**, vince la modifica più recente.
+- **Promemoria:** se la sincronizzazione è spenta e non fai un backup da più di 7 giorni (o non ne hai mai fatto uno), la schermata Oggi mostra un avviso con il pulsante per esportarlo.
 - ⚠️ Se elimini l'icona dalla Home su iPhone, iOS cancella anche i dati: esporta prima un backup.
 
 ## 5. Aggiornamenti

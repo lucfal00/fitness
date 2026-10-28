@@ -185,7 +185,10 @@ test('rotation with an archived template', () => {
   const afterC = docWith({ programs: [p], templates, sessions: [sess('2026-11-02', 'C', { rot: { p: 'P', i: 2 } })] });
   assert.equal(L.nextRotationIndex(afterC, p), 0);
   const none = docWith({ programs: [p], templates: ['A', 'B', 'C'].map((id) => tpl(id, { archived: true })) });
-  assert.deepEqual(L.planned(none, '2026-11-04', today), { items: [], count: 1 });
+  for (const d of ['2026-11-04', '2026-11-06', '2026-11-09']) assert.deepEqual(L.planned(none, d, today), { items: [], count: 0 }, d);
+  assert.deepEqual(L.planned(none, '2026-10-30', today), { items: [], count: 0 });   // past training day: nothing was plannable
+  const noneDone = docWith({ programs: [p], templates: ['A', 'B', 'C'].map((id) => tpl(id, { archived: true })), sessions: [sess('2026-11-04', 'A', { rot: { p: 'P', i: 0 } })] });
+  assert.deepEqual(L.planned(noneDone, today, today), { items: [], count: 0 });
   assert.equal(L.nextRotationIndex(none, p), 0);
 });
 

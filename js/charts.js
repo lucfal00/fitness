@@ -3,22 +3,6 @@
 import { addDays, weekStart, fromKey } from './logic.js';
 import { esc, safeColor, fmtFull, fmtNum, pct, MONTHS, DAY_SHORT } from './ui.js';
 
-// ---- Progress ring -----------------------------------------------------
-
-export function ring(f, color, size = 46, stroke = 5) {
-  color = safeColor(color);
-  const c = size / 2;
-  const r = (size - stroke) / 2;
-  const len = 2 * Math.PI * r;
-  const v = Math.max(0, Math.min(1, f || 0));
-  const arc = v > 0
-    ? `<circle cx="${c}" cy="${c}" r="${r}" fill="none" style="stroke:${color}" stroke-width="${stroke}"
-        stroke-linecap="round" stroke-dasharray="${(v * len).toFixed(2)} ${len.toFixed(2)}" transform="rotate(-90 ${c} ${c})"/>`
-    : '';
-  return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
-    <circle cx="${c}" cy="${c}" r="${r}" fill="none" style="stroke:var(--track)" stroke-width="${stroke}"/>${arc}</svg>`;
-}
-
 // ---- Calendar heatmap (sequential: one hue, quantised opacity) --------
 
 const STEPS = [0.35, 0.55, 0.78, 1];
@@ -86,38 +70,6 @@ function xLabels(points, x, h = FRAME.H) {
 function slots(n) {
   const slot = (FRAME.W - FRAME.L - FRAME.R) / n;
   return { slot, x: (i) => FRAME.L + (i + 0.5) * slot };
-}
-
-// ---- Line: % over time (single series, no legend) ---------------------
-
-/** points: [{ label, tip, value: null | 0..1 }]; one slot per point, so the axis is always complete.
- *  shade: colour each dot with the heatmap scale (same steps as "Meno → Più"). */
-export function lineChart(points, color, ariaLabel, { shade = false } = {}) {
-  color = safeColor(color);
-  const { W, H, L, R, T } = FRAME;
-  const ih = H - T - FRAME.B;
-  const { x } = slots(points.length);
-  const y = (v) => T + ih * (1 - v);
-  const dotR = (points.length > 20 ? 3 : 4) + (shade ? 1.5 : 0);   // shaded dots need area to read the step
-  const grid = [0, 0.5, 1].map((g) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}"/>
-    <text x="${L - 6}" y="${y(g) + 3}" text-anchor="end">${g * 100}%</text>`).join('');
-  let d = '';
-  let pen = false;
-  let dots = '';
-  points.forEach((p, i) => {
-    if (p.value == null) { pen = false; return; }
-    const px = x(i).toFixed(1);
-    const py = y(p.value).toFixed(1);
-    d += `${pen ? 'L' : 'M'}${px} ${py}`;
-    pen = true;
-    // shaded: an opaque card disc underneath, so the line doesn't show through and the tint matches the heatmap cell
-    const fill = shade ? cellStyle(p.value, color) : `fill:${color}`;
-    if (shade) dots += `<circle cx="${px}" cy="${py}" r="${dotR}" style="fill:var(--card)"/>`;
-    dots += `<circle cx="${px}" cy="${py}" r="${dotR}" style="${fill};stroke:var(--card)" stroke-width="2"/>
-      <circle class="hit" cx="${px}" cy="${py}" r="14" data-tip="${esc(`${p.tip} · ${pct(p.value)}`)}"/>`;
-  });
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(ariaLabel)}">${grid}${xLabels(points, x)}
-    <path d="${d}" fill="none" style="stroke:${color};stroke-opacity:${shade ? 0.45 : 1}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}</svg>`;
 }
 
 // ---- Line: free-scale values (weight, e1RM, pace…) ----------------------

@@ -3,7 +3,7 @@ import { resolveExercise, listExercises } from '../library.js';
 import {
   getDoc, saveTemplate, deleteTemplate, archiveTemplate, duplicateTemplate, isReadOnly,
 } from '../store.js';
-import { esc, safeColor, fmtKg, fmtDuration, parseNum, COLORS, GROUP_LABELS } from '../ui.js';
+import { esc, safeColor, fmtKg, fmtDuration, parseNum, COLORS } from '../ui.js';
 import {
   openSheet, openExerciseSheet, filterBar, bindFilterBar, filterExercises, exerciseMeta,
 } from './exercises.js';
