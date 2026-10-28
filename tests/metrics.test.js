@@ -179,9 +179,36 @@ test('suggestSets body, cardio, no template', () => {
   assert.deepEqual(free.map((x) => [x.kg, x.reps, x.tag]), [[52.5, 8, '+2,5 kg'], [52.5, 7, '+2,5 kg']]);
 });
 
+test('suggestSets: sessions with nothing ticked are skipped', () => {
+  const t = tplItem(BENCH, [{ reps: [8, 10], kg: 60 }, { reps: [8, 10], kg: 60 }, { reps: [8, 10], kg: 60 }]);
+  const good = sess('2026-10-01', [item(BENCH, [set({ kg: 60, reps: 10 }), set({ kg: 60, reps: 10 }), set({ kg: 60, reps: 10 })])]);
+  const idle = (date) => sess(date, [item(BENCH, [
+    set({ kg: 90, reps: 12, done: false }), set({ kg: 90, reps: 12, done: false }), set({ kg: 90, reps: 12, done: false }),
+  ])]);
+  const base = M.suggestSets(docWith([good]), BENCH, t, 2.5);
+  const later = M.suggestSets(docWith([good, idle('2026-10-08'), idle('2026-10-15')]), BENCH, t, 2.5);
+  assert.deepEqual(later, base);
+  assert.deepEqual(later.map((x) => [x.kg, x.reps]), [[62.5, 8], [62.5, 8], [62.5, 8]]);
+});
+
+test('suggestSets: a partially done session uses only its done sets, template set count kept', () => {
+  const t = tplItem(BENCH, [{ reps: [8, 10], kg: 60 }, { reps: [8, 10], kg: 60 }, { reps: [8, 10], kg: 60 }]);
+  const part = docWith([sess('2026-10-01', [item(BENCH, [
+    set({ kg: 60, reps: 8 }), set({ kg: 60, reps: 9 }), set({ kg: 100, reps: 10, done: false }),
+  ])])]);
+  const r = M.suggestSets(part, BENCH, t, 2.5);
+  assert.equal(r.length, 3);
+  assert.deepEqual(r.map((x) => [x.kg, x.reps, x.tag]), [[60, 9, '+1 rip'], [60, 10, '+1 rip'], [60, 10, '+1 rip']]);
+  const one = docWith([sess('2026-10-01', [item(BENCH, [set({ kg: 60, reps: 10 }), set({ kg: 60, reps: 3, done: false })])])]);
+  const q = M.suggestSets(one, BENCH, t, 2.5);
+  assert.deepEqual(q.map((x) => [x.kg, x.reps]), [[62.5, 8], [62.5, 8], [62.5, 8]]);
+});
+
 test('pace', () => {
   assert.equal(M.pace(1500, 5), '5:00');
   assert.equal(M.pace(1590, 5), '5:18');
+  assert.equal(M.pace(100, 0), null);
+  assert.equal(M.pace(100, null), null);
 });
 
 test('estimateMinutes', () => {

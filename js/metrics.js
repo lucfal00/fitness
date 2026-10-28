@@ -205,14 +205,16 @@ const itNum = (n) => String(n).replace('.', ',');
 
 /**
  * Suggested values for the sets of an exercise, one per template set (warm-ups copied).
- * Without a template item, one per working set of the last session.
+ * Without a template item, one per done working set of the last session. The base is the latest concluded
+ * session with at least one done working set; sets beyond the done ones reuse the last done set.
  */
 export function suggestSets(doc, exId, item, kgStep) {
   const ex = resolveExercise(doc, exId);
   const kind = ex?.kind ?? 'weight';
   const tSets = item?.sets ?? [];
   const hist = exerciseHistory(doc, exId);
-  const lastWork = hist.length ? hist[hist.length - 1].item.sets.filter((s) => !s.w) : [];
+  let lastWork = [];                              // done working sets of the latest session that has any
+  for (let i = hist.length - 1; i >= 0 && !lastWork.length; i--) lastWork = hist[i].item.sets.filter(isWork);
 
   const fromTemplate = (s) => ({
     w: !!s.w, kg: s.kg ?? null, reps: s.reps?.[0] ?? null, sec: s.sec ?? null, km: s.km ?? null,
@@ -224,7 +226,7 @@ export function suggestSets(doc, exId, item, kgStep) {
   const targetMax = (i) => tWork[i]?.reps?.[1] ?? lastAt(i).reps;
   const targetMin = (i) => tWork[i]?.reps?.[0] ?? lastAt(i).reps;
   const count = tSets.length ? tWork.length : lastWork.length;
-  const hit = lastWork.every((s, i) => s.done !== false && s.reps >= targetMax(i));
+  const hit = lastWork.every((s, i) => s.reps >= targetMax(i));
   const topKg = Math.max(...lastWork.map((s) => s.kg ?? 0));
 
   const work = [];
@@ -256,8 +258,9 @@ export function suggestSets(doc, exId, item, kgStep) {
   return tSets.map((s) => (s.w ? fromTemplate(s) : work[n++]));
 }
 
-/** Pace 'm:ss' per km. */
+/** Pace 'm:ss' per km; null when km is not > 0. */
 export function pace(sec, km) {
+  if (!(km > 0)) return null;
   const s = Math.round(sec / km);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
