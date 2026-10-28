@@ -176,3 +176,86 @@ test('store: concluded program activates as a copy; endProgram future vs active'
   s.endProgram(used);
   assert.equal(s.getDoc().programs.find((p) => p.id === used).to, addDays(today, -1));
 });
+
+// Wake lock: fake navigator/document installed before a fresh timer.js import (its visibility listener is registered at import).
+let freshTimer = 0;
+const flush = () => new Promise((r) => setImmediate(r));
+async function withWakeLock(fn) {
+  const saved = ['navigator', 'document'].map((k) => [k, Object.getOwnPropertyDescriptor(globalThis, k)]);
+  const requests = [];
+  const pending = [];
+  const visibility = {};
+  const sentinel = () => ({
+    released: 0,
+    handlers: [],
+    release() { this.released++; return Promise.resolve(); },
+    addEventListener(type, fn) { this.handlers.push(fn); },
+  });
+  const define = (k, value) => Object.defineProperty(globalThis, k, { value, configurable: true, writable: true });
+  define('navigator', { wakeLock: { request(type) { requests.push(type); return new Promise((res, rej) => pending.push({ res, rej })); } } });
+  define('document', {
+    visibilityState: 'visible',
+    addEventListener(type, fn) { visibility[type] = fn; },
+  });
+  try {
+    const t = await import(`../js/timer.js?case=${++freshTimer}`);
+    await fn({ t, requests, pending, sentinel, onVisible: () => visibility.visibilitychange?.() });
+  } finally {
+    for (const [k, d] of saved) {
+      if (d) Object.defineProperty(globalThis, k, d); else delete globalThis[k];
+    }
+  }
+}
+
+test('wake lock: concurrent keepAwake(true) and visibility re-request while pending -> one request, no leak', async () => {
+  await withWakeLock(async ({ t, requests, pending, sentinel, onVisible }) => {
+    t.keepAwake(true);
+    t.keepAwake(true);
+    onVisible();
+    assert.equal(requests.length, 1);
+    const l = sentinel();
+    pending[0].res(l);
+    await flush();
+    assert.equal(requests.length, 1);
+    t.keepAwake(true);                // already held: no new request
+    onVisible();
+    assert.equal(requests.length, 1);
+    t.keepAwake(false);
+    assert.equal(l.released, 1);
+  });
+});
+
+test('wake lock: keepAwake(false) during pending request releases the sentinel on arrival', async () => {
+  await withWakeLock(async ({ t, requests, pending, sentinel }) => {
+    t.keepAwake(true);
+    t.keepAwake(false);
+    const l = sentinel();
+    pending[0].res(l);
+    await flush();
+    assert.equal(l.released, 1);
+    assert.equal(requests.length, 1);
+    t.keepAwake(true);                // a new request after the release is allowed
+    assert.equal(requests.length, 2);
+  });
+});
+
+test('wake lock: off-on during a refused request re-requests once, refusal does not loop', async () => {
+  await withWakeLock(async ({ t, requests, pending, sentinel }) => {
+    t.keepAwake(true);
+    t.keepAwake(false);
+    t.keepAwake(true);
+    pending[0].rej(new Error('NotAllowedError'));
+    await flush();
+    assert.equal(requests.length, 2);
+    pending[1].rej(new Error('NotAllowedError'));
+    await flush();
+    assert.equal(requests.length, 2);
+    const l = sentinel();
+    t.keepAwake(false);
+    t.keepAwake(true);
+    pending[2].res(l);
+    await flush();
+    t.keepAwake(false);
+    assert.equal(l.released, 1);
+  });
+});

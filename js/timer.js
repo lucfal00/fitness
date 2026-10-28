@@ -8,6 +8,7 @@ let ctx = null;
 let lock = null;
 let wantLock = false;
 let locking = false;
+let wantSeq = 0;                      // bumped by every keepAwake() call
 
 export function restState() {
   const remaining = running ? Math.max(0, Math.ceil((until - Date.now()) / 1000)) : 0;
@@ -99,22 +100,27 @@ function play() {
 // ---- Wake lock ----------------------------------------------------------
 
 async function requestLock() {
+  const seq = wantSeq;
+  let own = false;                    // only the call that set locking may clear it
   try {
     if (!wantLock || lock || locking || !navigator.wakeLock || document.visibilityState !== 'visible') return;
-    locking = true;
+    locking = own = true;
     const l = await navigator.wakeLock.request('screen');
     if (!wantLock) {                  // keepAwake(false) arrived meanwhile
       l.release().catch(() => {});
-      return;
+    } else {
+      lock = l;
+      l.addEventListener('release', () => { if (lock === l) lock = null; });
     }
-    lock = l;
-    l.addEventListener('release', () => { if (lock === l) lock = null; });
-  } catch { /* refused or unavailable: ignore */ } finally { locking = false; }
+  } catch { /* refused or unavailable: ignore */ } finally { if (own) locking = false; }
+  // keepAwake() was called during the await and no lock is held: request once more (no retry loop on refusal)
+  if (wantLock && !lock && seq !== wantSeq) requestLock();
 }
 
 /** Keep the screen on while on; re-requested when the app returns to the foreground. */
 export function keepAwake(on) {
   wantLock = on;
+  wantSeq++;
   if (on) {
     requestLock();
   } else if (lock) {
