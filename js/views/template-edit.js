@@ -1,8 +1,9 @@
 // "Giorno" (#scheda/<id>/giorno/<tplId|nuovo>): day editor of a scheda (items, sets, supersets), with validation.
 import { resolveExercise, listExercises } from '../library.js';
 import {
-  getDoc, saveSchedaDay, addSchedaDay, isReadOnly,
+  getDoc, saveSchedaDay, addSchedaDay, nextDayName, isReadOnly,
 } from '../store.js';
+import { isScheda } from '../logic.js';
 import { esc, fmtKg, fmtDuration, parseNum } from '../ui.js';
 import {
   openSheet, openExerciseSheet, filterBar, bindFilterBar, filterExercises, exerciseMeta,
@@ -80,7 +81,7 @@ function fromTemplate(doc, t, key) {
 }
 
 const blank = (key, p) => ({
-  key, id: null, name: `Giorno ${p.seq.length + 1}`, items: [],
+  key, id: null, name: nextDayName(p.id), items: [],      // same default as the store gives a day saved without a name
 });
 
 function newItem(doc, ex) {
@@ -274,7 +275,7 @@ function addItem(id) {
 export function render(el, ctx) {
   const { doc, param, schedaId } = ctx;
   refresh = ctx.refresh;
-  const p = doc.programs.find((x) => x.id === schedaId && !x.deleted && x.kind === 'rotation');
+  const p = doc.programs.find((x) => x.id === schedaId && isScheda(x));      // legacy programs go back to the list
   if (!p) {
     location.hash = '#schede';
     return;

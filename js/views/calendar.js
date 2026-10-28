@@ -1,7 +1,7 @@
 // "Calendario" (#calendario[/AAAA-MM]): month grid with planned / done workouts, day sheet, active scheda box.
 import {
-  planned, isPlannedDone, addDays, addMonths, monthStart, monthEnd, weekStart, isConcluded, fromKey, toKey, activeProgram,
-  workoutLabel, schedaOf,
+  planned, isPlannedDone, addDays, addMonths, monthStart, monthEnd, weekStart, isConcluded, isDate, activeProgram,
+  workoutLabel, isScheda, usable, choosableList,
 } from '../logic.js';
 import {
   getDoc, onChange, setPlan, movePlanned, addPastSession, isReadOnly,
@@ -10,19 +10,12 @@ import {
   esc, safeColor, fmtDay, fmtFull, DAY_LETTERS, DAY_SHORT,
 } from '../ui.js';
 import { openSheet } from './exercises.js';
-import { isScheda, schedaMeta, isConcludedScheda } from './templates.js';
+import { schedaMeta } from './templates.js';
 
 const FULL_MONTHS = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto',
   'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
 const tplOf = (doc, id) => (id ? doc.templates.find((t) => t.id === id) ?? null : null);
-/** Days one can plan: live templates, those of concluded schede left out. */
-const liveTemplates = (doc, today) => doc.templates.filter((t) => {
-  if (t.deleted || t.archived) return false;
-  const p = schedaOf(doc, t.id);
-  return !p || !isConcludedScheda(p, today);
-}).sort((a, b) => a.order - b.order);
-const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && toKey(fromKey(s)) === s;
 
 /** Month key (first day) from the route, else the current month. */
 function monthOf(param, today) {
@@ -32,7 +25,7 @@ function monthOf(param, today) {
 
 /** Rows of buttons (data-tpl) to choose a day ("Scheda · Giorno"). */
 function pickerRows(doc, today) {
-  const list = liveTemplates(doc, today);
+  const list = choosableList(doc, today).filter((t) => usable(doc, t.id));   // planning: no concluded schede, no empty days
   if (!list.length) return '<li><span class="muted">Nessuna scheda disponibile.</span></li>';
   return list.map((t) => `<li><button type="button" class="btn" data-tpl="${esc(t.id)}">
     <span class="badge" style="--c:${safeColor(t.color)}">${esc(t.emoji || '💪')}</span><span>${esc(workoutLabel(doc, t.id))}</span></button></li>`).join('');
@@ -152,7 +145,7 @@ function openDay(d, today) {
     } else if (m.t === 'past') {
       box.innerHTML = `<h2>Aggiungi allenamento svolto</h2>
         <div class="form"><label class="field">Scheda<select name="tpl"><option value="">Allenamento libero</option>
-          ${liveTemplates(doc, today).map((t) => `<option value="${esc(t.id)}">${esc(workoutLabel(doc, t.id))}</option>`).join('')}</select></label>
+          ${choosableList(doc, today, { withConcluded: true }).map((t) => `<option value="${esc(t.id)}">${esc(workoutLabel(doc, t.id))}</option>`).join('')}</select></label>
         <label class="field">Durata (minuti)<input type="text" inputmode="numeric" name="min" value="60" autocomplete="off"></label>
         <p class="error" role="alert" hidden></p></div>
         <button type="button" class="btn primary center" data-act="dopast">Aggiungi</button>${back}`;

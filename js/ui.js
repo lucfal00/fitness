@@ -5,6 +5,7 @@ import { fromKey } from './logic.js';
 export const COLORS = ['#2f8f4a', '#6366f1', '#14b8a6', '#f43f5e', '#f59e0b', '#0ea5e9', '#a855f7', '#c62f3a'];
 export const DAY_LETTERS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
 export const DAY_SHORT = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
+export const DAY_NAMES = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
 export const MONTHS = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 
 export const GROUP_LABELS = {

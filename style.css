@@ -125,6 +125,7 @@ button { cursor: pointer; }
 .btn.primary { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }
 .btn.danger { color: var(--danger); }
 .btn.block { width: 100%; }
+small.block { display: block; }
 .btn.small { padding: 6px 12px; font-size: .85rem; }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -260,8 +261,10 @@ details .rows li { padding-left: 0; padding-right: 0; }
 .swatches, .days-row, .emoji-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .swatches .pick span { display: block; width: 44px; height: 44px; border-radius: 50%; background: var(--sw); cursor: pointer; }
 .swatches .pick input:checked + span { box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--sw); }
+.days-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0; }          /* 7 equal columns: one line from 320 px */
+.days-row .pick { display: grid; place-items: center; min-height: 44px; }           /* hit area: the whole column, >= 44 px tall */
 .days-row .pick span {
-  display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%;
   border: 1px solid var(--line); font-weight: 700; cursor: pointer;
 }
 .days-row .pick input:checked + span { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }

@@ -38,7 +38,7 @@ function route() {
   const [name, ...rest] = location.hash.slice(1).split('/');
   let param = '';
   try {
-    param = rest.length ? decodeURIComponent(rest.join('/')) : '';
+    param = rest.map(decodeURIComponent).join('/');      // hash split first, then each segment decoded on its own
   } catch { /* malformed escape: no parameter */ }
   if (name === 'programma') {                 // removed screen: old links go to the schede
     location.replace('#schede');

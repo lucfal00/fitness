@@ -1,20 +1,18 @@
 // "Scheda" (#scheda/<id|nuova>): name, look, days, weekly schedule; activate / end; delete.
 import {
-  getDoc, saveScheda, addSchedaDay, moveSchedaDay, duplicateSchedaDay, deleteSchedaDay, deleteScheda, activateProgram, endProgram,
-  isReadOnly,
+  saveScheda, duplicateSchedaDay, moveSchedaDay, deleteSchedaDay, deleteScheda, activateProgram, endProgram, isReadOnly,
 } from '../store.js';
-import { todayKey, fromKey, toKey } from '../logic.js';
+import {
+  isScheda, schedaDays, isConcludedScheda, isDate,
+} from '../logic.js';
 import { estimateMinutes } from '../metrics.js';
 import {
-  esc, safeColor, fmtFull, DAY_LETTERS, COLORS,
+  esc, safeColor, fmtFull, DAY_LETTERS, DAY_NAMES, COLORS,
 } from '../ui.js';
 import { openSheet } from './exercises.js';
-import {
-  isScheda, schedaDays, isConcludedScheda, plural,
-} from './templates.js';
+import { plural } from './templates.js';
 
 const EMOJIS = ['💪', '🏋️', '🦵', '🏃', '🚴', '🧘', '🔥', '⚡', '🥊', '🏊', '🤸', '🎯'];
-const DAY_NAMES = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
 
 // Unsaved form state lives here (not in the DOM), so store events that redraw the view never lose it.
 // It also survives a visit to the day editor (#scheda/<id>/giorno/…) and is dropped when leaving the scheda screens.
@@ -26,8 +24,6 @@ if (typeof window !== 'undefined') {
     if (!location.hash.startsWith('#scheda/')) draft = null;
   });
 }
-
-const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && toKey(fromKey(s)) === s;
 
 function mutate(fn) {
   own = true;
@@ -98,8 +94,8 @@ function statusText(p, today) {
 export function render(el, ctx) {
   const { doc, param, today } = ctx;
   refresh = ctx.refresh;
-  const p = param === 'nuova' ? null : doc.programs.find((x) => x.id === param && !x.deleted && x.kind === 'rotation');
-  if (param !== 'nuova' && !p) {
+  const p = param === 'nuova' ? null : doc.programs.find((x) => x.id === param && isScheda(x));
+  if (param !== 'nuova' && !p) {                                // missing, deleted or a legacy program: back to the list
     location.hash = '#schede';
     return;
   }
@@ -125,7 +121,7 @@ export function render(el, ctx) {
       ${running || scheduled
     ? `<button type="button" class="btn block" data-act="end" ${ro ? 'disabled' : ''}>${scheduled ? 'Annulla attivazione' : 'Termina ora'}</button>`
     : `<button type="button" class="btn primary block" data-act="activate">${concluded ? 'Riattiva…' : 'Attiva…'}</button>`}
-      ${running || scheduled ? '' : '<small class="muted act-hint" hidden>Aggiungi almeno un giorno per attivare la scheda.</small>'}
+      ${running || scheduled ? '' : '<small class="muted act-hint" hidden>Aggiungi almeno un giorno con esercizi per attivare la scheda.</small>'}
     </div>`;
 
   el.innerHTML = `
@@ -183,7 +179,7 @@ export function render(el, ctx) {
     save.disabled = ro || msgs.length > 0;
     addDay.disabled = ro || msgs.length > 0;
     if (act) {
-      const none = days.length === 0;
+      const none = !days.some((t) => t.items.length > 0);      // empty days are never proposed
       act.disabled = ro || msgs.length > 0 || none;
       hint.hidden = !none;
     }
@@ -217,14 +213,14 @@ export function render(el, ctx) {
       if (b.dataset.act !== 'go' || validate(d).length) return;
       const from = box.querySelector('[name=from]').value;
       if (!isDate(from)) { err('Scegli una data di inizio valida.'); return; }
-      const edited = Object.keys(buildFields(d)).length > 1;
+      const edited = !d.id || d.touched.size > 0;          // an untouched existing scheda needs no save
       let id = null;
       mutate(() => {
         if (concluded) {                                 // history stays unchanged: the copy is activated (and edited)
           id = activateProgram(d.id, from, null);
           if (id != null && edited) saveScheda({ ...buildFields(d), id });
         } else {
-          id = saveScheda(buildFields(d));
+          id = edited ? saveScheda(buildFields(d)) : d.id;
           if (id != null) id = activateProgram(id, from, null);
         }
       });
@@ -276,14 +272,12 @@ export function render(el, ctx) {
     } else if (a === 'addday') {
       if (ro || validate(d).length) return;
       let sid = p?.id ?? null;
-      if (!p) {                                          // the day needs a saved scheda
+      if (!p) {                                          // the day needs a saved scheda; the day itself is created on its Save
         sid = persist();
         if (sid == null) return;
         draft = null;
       }
-      const tid = mutate(() => addSchedaDay(sid));
-      if (tid != null) location.hash = `#scheda/${encodeURIComponent(sid)}/giorno/${encodeURIComponent(tid)}`;
-      else fail(SAVE_FAIL);
+      location.hash = `#scheda/${encodeURIComponent(sid)}/giorno/nuovo`;
     } else if (a === 'up' || a === 'down' || a === 'dup' || a === 'rm') {
       const tid = b.closest('[data-id]').dataset.id;
       if (a === 'up' || a === 'down') mutate(() => moveSchedaDay(tid, a === 'up' ? -1 : 1));

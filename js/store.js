@@ -1,7 +1,7 @@
 // Persistence: the only module that touches localStorage.
 // Emits 'change' (detail { kind, id }) after data mutations and 'sync' when sync status or the banner changes.
 import {
-  emptyDoc, newId, todayKey, addDays, fromKey, activeProgram, activationPatches, nextRotationIndex, planned,
+  emptyDoc, newId, todayKey, addDays, fromKey, activeProgram, activationPatches, nextRotationIndex, planned, isScheda,
 } from './logic.js';
 import { validateDoc, mergeDocs } from './merge.js';
 import { suggestSets } from './metrics.js';
@@ -292,7 +292,7 @@ export function activateProgram(id, from, to = null) {
   if (p.to != null && p.to < todayKey()) {
     target = { ...clone(p), id: newId('p_'), from: null, to: null, deleted: false, updatedAt: now() };
     doc.programs.push(target);
-    if (p.kind === 'rotation' && p.perWeek > 0) cloneSchedaDays(p, target);
+    if (isScheda(p)) cloneSchedaDays(p, target);
   }
   const t = now();
   for (const patch of activationPatches(doc, target.id, from, to)) {
@@ -305,13 +305,13 @@ export function activateProgram(id, from, to = null) {
   return target.id;
 }
 
-/** to = yesterday; a program that has not started yet becomes not activated. */
+/** to = yesterday; a program that starts today or later becomes not activated (never to < from). */
 export function endProgram(id) {
   if (readOnly) return;
   const p = find(doc.programs, id);
   if (!p || p.from == null) return;
   const today = todayKey();
-  if (p.from > today) {
+  if (p.from >= today) {
     p.from = null;
     p.to = null;
   } else {
@@ -334,17 +334,18 @@ export function deleteProgram(id) {
 // A scheda is a rotation program; its days are templates with { scheda, dayName }, ordered by program.seq.
 
 const cleanText = (v, max = 40) => String(v ?? '').trim().slice(0, max);
-const liveScheda = (id) => doc.programs.find((p) => p.id === id && !p.deleted && p.kind === 'rotation') ?? null;
+const liveScheda = (id) => doc.programs.find((p) => p.id === id && isScheda(p)) ?? null;
 /** "Scheda · Giorno" within 60 characters: the scheda part is cut first, the day name stays whole. */
 function dayLabel(p, dayName) {
   const tail = ` · ${dayName}`;
   return p.name.slice(0, Math.max(0, 60 - tail.length)) + tail;
 }
 
-/** First "Giorno n" not used by a live day of the scheda. */
-function freeDayName(p) {
-  const used = new Set(doc.templates.filter((t) => t.scheda === p.id && !t.deleted).map((t) => t.dayName));
-  let n = (p.seq?.length ?? 0) + 1;           // next position first, then the next free number
+/** Default name of the next day of scheda `schedaId`: the first "Giorno n" from its next position not used by a live day. */
+export function nextDayName(schedaId) {
+  const p = liveScheda(schedaId);
+  const used = new Set(doc.templates.filter((t) => t.scheda === schedaId && !t.deleted).map((t) => t.dayName));
+  let n = (p?.seq?.length ?? 0) + 1;           // next position first, then the next free number
   while (used.has(`Giorno ${n}`)) n++;
   return `Giorno ${n}`;
 }
@@ -396,7 +397,7 @@ export function addSchedaDay(schedaId, { dayName, items = [] } = {}) {
   if (readOnly) return null;
   const p = liveScheda(schedaId);
   if (!p) return null;
-  const name = cleanText(dayName) || freeDayName(p);
+  const name = cleanText(dayName) || nextDayName(p.id);
   const id = newId('t_');
   const t = now();
   doc.templates.push({

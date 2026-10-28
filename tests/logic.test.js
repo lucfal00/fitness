@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as L from '../js/logic.js';
 
-const tpl = (id, o = {}) => ({ id, name: id, items: [], archived: false, deleted: false, updatedAt: 1, ...o });
+const tpl = (id, o = {}) => ({ id, name: id, items: [{ ex: 'x', sets: [{ reps: [8, 8] }] }], archived: false, deleted: false, updatedAt: 1, ...o });
 const prog = (o = {}) => ({
   id: 'P', name: 'P', kind: 'week', from: '2026-11-02', to: null, deleted: false, updatedAt: 1,
   weeks: [[['A'], [], ['B'], [], ['C', 'R'], [], []]], seq: [], days: null, ...o,
@@ -363,6 +363,50 @@ test('rotation: a skipped day does not consume a position', () => {
   assert.equal(L.nextRotationIndex(free, p), 1);                                              // still day 2
   const g2 = sess('2026-11-06', 'B', { rot: { p: 'S', i: 1 } });
   assert.equal(L.nextRotationIndex(docWith({ programs: [p], sessions: [g1, g2] }), p), 2);
+});
+
+test('rotation skips an empty day; a scheda of empty days plans nothing', () => {
+  const templates = ['A', 'B', 'C'].map((id) => tpl(id, id === 'B' ? { items: [] } : {}));
+  const p = scheda({ days: [1, 2, 3, 4, 5, 6, 7] });
+  const doc = docWith({ programs: [p], templates, sessions: [sess('2026-11-02', 'A', { rot: { p: 'S', i: 0 } })] });
+  assert.equal(L.usable(doc, 'B'), false);
+  assert.equal(L.usable(doc, 'C'), true);
+  assert.equal(L.nextRotationIndex(doc, p), 2);                                               // B is empty: C follows A
+  assert.deepEqual(L.planned(doc, '2026-11-03', '2026-11-03').items, ['C']);
+  assert.deepEqual(L.planned(doc, '2026-11-04', '2026-11-03').items, ['A']);
+  const none = docWith({ programs: [p], templates: ['A', 'B', 'C'].map((id) => tpl(id, { items: [] })) });
+  assert.deepEqual(L.planned(none, '2026-11-03', '2026-11-03'), { items: [], count: 0 });
+  assert.deepEqual(L.planned(none, '2026-11-05', '2026-11-03'), { items: [], count: 0 });
+  const free = docWith({ programs: [scheda()], templates: ['A', 'B', 'C'].map((id) => tpl(id, { items: [] })) });
+  assert.deepEqual(L.planned(free, '2026-11-03', '2026-11-03'), { items: [], count: 0 });
+});
+
+test('isScheda, isDate, schedaGroups and choosableDays', () => {
+  assert.equal(L.isScheda(scheda()), true);
+  assert.equal(L.isScheda(scheda({ deleted: true })), false);
+  assert.equal(L.isScheda(rotation({ perWeek: undefined })), false);                          // legacy rotation
+  assert.equal(L.isScheda(prog()), false);
+  assert.equal(L.isScheda(null), false);
+  assert.equal(L.isDate('2026-02-28'), true);
+  assert.equal(L.isDate('2026-02-30'), false);
+  assert.equal(L.isDate('26-1-1'), false);
+  const today = '2026-11-10';
+  const live = scheda({ id: 'S', name: 'Live', seq: ['A', 'B'], from: '2026-11-01', to: null });
+  const old = scheda({ id: 'O', name: 'Old', seq: ['C'], from: '2026-09-01', to: '2026-10-01' });
+  const idle = scheda({ id: 'I', name: 'Idle', seq: ['A2'], from: null, to: null });
+  const templates = [
+    tpl('A', { scheda: 'S', order: 1 }), tpl('B', { scheda: 'S', order: 2, archived: true }), tpl('C', { scheda: 'O', order: 3 }),
+    tpl('A2', { scheda: 'I', order: 4 }), tpl('X', { order: 5 }), tpl('Y', { order: 0 }),
+  ];
+  const doc = docWith({ programs: [live, old, idle], templates });
+  const g = L.schedaGroups(doc, today);
+  assert.deepEqual([g.active.id, g.others.map((p) => p.id), g.concluded.map((p) => p.id)], ['S', ['I'], ['O']]);
+  const ids = (list) => list.map((t) => t.id);
+  const c = L.choosableDays(doc, today);
+  assert.deepEqual(c.groups.map((x) => [x.p.id, ids(x.days)]), [['S', ['A']], ['I', ['A2']]]);   // archived day out, concluded out
+  assert.deepEqual(ids(c.loose), ['Y', 'X']);
+  assert.deepEqual(ids(L.choosableList(doc, today)), ['A', 'A2', 'Y', 'X']);
+  assert.deepEqual(ids(L.choosableList(doc, today, { withConcluded: true })), ['A', 'A2', 'C', 'Y', 'X']);
 });
 
 test('schedaOf and workoutLabel', () => {

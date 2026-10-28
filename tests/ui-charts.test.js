@@ -186,8 +186,14 @@ test('store: concluded program activates as a copy; endProgram future vs active'
   s.endProgram(fut);
   const f = s.getDoc().programs.find((p) => p.id === fut);
   assert.deepEqual([f.from, f.to], [null, null]);
-  s.endProgram(used);
-  assert.equal(s.getDoc().programs.find((p) => p.id === used).to, addDays(today, -1));
+  s.endProgram(used);                                          // started today: becomes not activated (never to < from)
+  const u = s.getDoc().programs.find((p) => p.id === used);
+  assert.deepEqual([u.from, u.to], [null, null]);
+  const running = s.saveProgram({ name: 'Run', kind: 'free' });
+  s.activateProgram(running, addDays(today, -3));
+  s.endProgram(running);                                       // started earlier: to = yesterday
+  const r = s.getDoc().programs.find((p) => p.id === running);
+  assert.deepEqual([r.from, r.to], [addDays(today, -3), addDays(today, -1)]);
 });
 
 // ---- Schede ----------------------------------------------------------------
@@ -212,6 +218,10 @@ test('store: saveScheda + addSchedaDay build template days in seq order', async 
   assert.deepEqual(ts[1].items, []);
   assert.deepEqual([ts[0].emoji, ts[0].color], ['🏋️', '#112233']);
   assert.equal(s.addSchedaDay('nope'), null);
+  assert.equal(s.nextDayName(sid), 'Giorno 4');                // the name the day editor proposes for a new day
+  const e = s.addSchedaDay(sid);
+  assert.equal(s.getDoc().templates.find((t) => t.id === e).dayName, 'Giorno 4');
+  s.deleteSchedaDay(e);
   // update keeps seq / activation; perWeek is clamped, days normalised
   s.activateProgram(sid, '2026-11-02');
   s.saveScheda({ id: sid, name: 'Nuova', emoji: '🔥', color: '#445566', perWeek: 99, days: [5, 1, 1, 9] });

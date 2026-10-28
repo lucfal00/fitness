@@ -43,6 +43,9 @@ export function addMonths(key, n) {
   return toKey(new Date(d.getFullYear(), d.getMonth() + n, 1));
 }
 
+/** Valid 'YYYY-MM-DD' calendar key. */
+export const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && toKey(fromKey(s)) === s;
+
 function* days(from, to) {
   for (let k = from; k <= to; k = addDays(k, 1)) yield k;
 }
@@ -101,7 +104,8 @@ export function activationPatches(doc, id, from, to = null) {
 
 // ---- Planned workouts --------------------------------------------------
 
-const usable = (doc, id) => doc.templates.some((t) => t.id === id && !t.archived && !t.deleted);
+/** A day can be planned / proposed: live, not archived, with at least one exercise. */
+export const usable = (doc, id) => doc.templates.some((t) => t.id === id && !t.archived && !t.deleted && t.items?.length > 0);
 
 const usableIds = (doc, ids) => ids.filter((id) => usable(doc, id));
 
@@ -186,6 +190,41 @@ export function planned(doc, d, today = todayKey()) {
 
 // ---- Schede ------------------------------------------------------------
 
+/** A scheda is a live rotation program with a weekly target (older week / free / rotation programs are not schede). */
+export const isScheda = (p) => !!p && !p.deleted && p.kind === 'rotation' && p.perWeek > 0;
+
+/** Live days (templates) of a scheda, in rotation order. */
+export const schedaDays = (doc, p) => p.seq.map((id) => doc.templates.find((t) => t.id === id)).filter((t) => t && !t.deleted);
+
+export const isConcludedScheda = (p, today) => p.from != null && p.to != null && p.to < today;
+
+/** { active, others, concluded }: the running scheda (or null), the not concluded rest, the concluded ones (newest first). */
+export function schedaGroups(doc, today) {
+  const all = doc.programs.filter(isScheda);
+  const cur = activeProgram(doc, today);
+  const active = isScheda(cur) ? cur : null;
+  const concluded = all.filter((p) => p !== active && isConcludedScheda(p, today)).sort((a, b) => b.to.localeCompare(a.to));
+  const others = all.filter((p) => p !== active && !concluded.includes(p))
+    .sort((a, b) => (a.from == null) - (b.from == null) || a.name.localeCompare(b.name, 'it'));
+  return { active, others, concluded };
+}
+
+/** Days one can choose: { groups: [{ p, days }] (active scheda first, then the others; concluded ones only with
+ *  `withConcluded`, for past workouts), loose: live templates without scheda }. */
+export function choosableDays(doc, today, { withConcluded = false } = {}) {
+  const { active, others, concluded } = schedaGroups(doc, today);
+  const groups = [active, ...others, ...(withConcluded ? concluded : [])].filter(Boolean)
+    .map((p) => ({ p, days: schedaDays(doc, p).filter((t) => !t.archived) }));
+  const loose = doc.templates.filter((t) => !t.deleted && !t.archived && !schedaOf(doc, t.id)).sort((a, b) => a.order - b.order);
+  return { groups, loose };
+}
+
+/** All templates of choosableDays in display order. */
+export const choosableList = (doc, today, opts) => {
+  const { groups, loose } = choosableDays(doc, today, opts);
+  return [...groups.flatMap((g) => g.days), ...loose];
+};
+
 /** Scheda (program) a day template belongs to, also when deleted (history keeps its name); null if none. */
 export function schedaOf(doc, tplId) {
   const sid = doc.templates.find((t) => t.id === tplId)?.scheda;
@@ -212,7 +251,7 @@ function dayScore(doc, d, today) {
 }
 
 /** Rotation scheda with a weekly target and no preferred days: scored per week, not per day (§3). */
-const weekly = (p) => p?.kind === 'rotation' && p.days == null && p.perWeek > 0;
+const weekly = (p) => isScheda(p) && p.days == null;
 
 /** Program a week belongs to: the one active on its Monday, else the first active day of the week. */
 function weekOwner(doc, w) {
@@ -235,7 +274,7 @@ function weekDone(doc, w, today) {
 /** { done, target } of the Monday–Sunday week containing today; target = perWeek of the active scheda, else null. */
 export function weekProgress(doc, today) {
   const p = activeProgram(doc, today);
-  return { done: weekDone(doc, weekStart(today), today), target: p?.kind === 'rotation' ? p.perWeek ?? null : null };
+  return { done: weekDone(doc, weekStart(today), today), target: isScheda(p) ? p.perWeek : null };
 }
 
 /** Σ ok / Σ prev over from..to (days ≤ today); null when nothing was planned.

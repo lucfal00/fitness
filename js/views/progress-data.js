@@ -189,7 +189,7 @@ export function exerciseSeries(doc, exId) {
     const st = sessionExerciseStats(doc, session, exId);
     const sets = session.items.filter((it) => it.ex === exId).flatMap((it) => it.sets.filter(isWork));
     return {
-      id: session.id, date: session.date, text: sets.map((s) => setText(ex, s)).join(' · '),
+      id: session.id, date: session.date, tpl: session.tpl ?? null, text: sets.map((s) => setText(ex, s)).join(' · '),
       e1rm: st.e1rm, maxKg: st.maxKg, maxReps: st.maxReps, maxSec: st.maxSec,
       volume: Math.round(st.volume ?? 0), km: Math.round(st.km * 100) / 100, sec: st.sec,
       pace: st.pkm ? st.psec / st.pkm : null,

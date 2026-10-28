@@ -64,8 +64,8 @@ export function render(el, { doc, param }) {
   const r = records(doc, ex.id);
   const meta = [KIND[ex.kind], ex.group ? GROUP_LABELS[ex.group] : null].filter(Boolean).join(' · ');
   const rows = [...list].reverse().map((s) => `<li><a class="row" href="#sessione/${encodeURIComponent(s.id)}">
-    <span style="flex:1"><b>${esc(fmtFull(s.date))}</b><small class="muted" style="display:block">${esc(workoutLabel(doc, doc.sessions.find((x) => x.id === s.id)?.tpl))}</small>
-      <small class="muted" style="display:block">${esc(s.text || '–')}</small></span>
+    <span style="flex:1"><b>${esc(fmtFull(s.date))}</b><small class="muted block">${esc(workoutLabel(doc, s.tpl))}</small>
+      <small class="muted block">${esc(s.text || '–')}</small></span>
     <span class="chev" aria-hidden="true">›</span></a></li>`).join('');
   const best = recordSummary(doc, ex.id);
 

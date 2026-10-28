@@ -1,7 +1,7 @@
 // "Oggi" (#oggi[/AAAA-MM-DD]): day navigation, week strip, next scheda day, weekly target, open / concluded workouts, body weight.
 import {
-  planned, isPlannedDone, activeProgram, nextRotationIndex, todayKey, addDays, weekStart, isConcluded, toKey, fromKey,
-  weekProgress, workoutLabel, schedaOf,
+  planned, isPlannedDone, activeProgram, nextRotationIndex, todayKey, addDays, weekStart, isConcluded, isDate,
+  weekProgress, workoutLabel, isScheda, usable, choosableDays, choosableList,
 } from '../logic.js';
 import { resolveExercise } from '../library.js';
 import { estimateMinutes, sessionVolume, sessionRecords } from '../metrics.js';
@@ -12,23 +12,10 @@ import { unlockAudio, skipRest } from '../timer.js';
 import { esc, safeColor, fmtDay, fmtKg, fmtNum, parseNum, DAY_LETTERS } from '../ui.js';
 import { openSheet } from './exercises.js';
 import { setCounts, fmtMinutes } from './session-rows.js';
-import { isScheda, schedaGroups, schedaDays } from './templates.js';
 
 const WEEK_MS = 7 * 864e5;
 
-/** Days one can train: { groups: [{ p, days }] (active scheda first, concluded ones left out), loose: templates without scheda }. */
-function choices(doc, today) {
-  const { active, others } = schedaGroups(doc, today);
-  const groups = [active, ...others].filter(Boolean).map((p) => ({ p, days: schedaDays(doc, p).filter((t) => !t.archived) }));
-  const loose = doc.templates.filter((t) => !t.deleted && !t.archived && !schedaOf(doc, t.id)).sort((a, b) => a.order - b.order);
-  return { groups, loose };
-}
-const liveTemplates = (doc, today) => {
-  const { groups, loose } = choices(doc, today);
-  return [...groups.flatMap((g) => g.days), ...loose];
-};
 const tplOf = (doc, id) => (id ? doc.templates.find((t) => t.id === id) ?? null : null);
-const usable = (doc, id) => doc.templates.some((t) => t.id === id && !t.deleted && !t.archived);
 const sessionHash = (id) => `#sessione/${encodeURIComponent(id)}`;
 
 function look(doc, s) {
@@ -38,7 +25,7 @@ function look(doc, s) {
 
 /** Selected day from the route: a valid date not after today, else today. */
 function dayOf(param, today) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(param) || toKey(fromKey(param)) !== param) return today;
+  if (!isDate(param)) return today;
   return param <= today ? param : today;
 }
 
@@ -169,7 +156,7 @@ function tplButton(t, label, tag = '') {
 
 /** "Allenati comunque" / "Altro allenamento": schede with their days, or a free workout. */
 function openPicker(doc, today, nextId) {
-  const { groups, loose } = choices(doc, today);
+  const { groups, loose } = choosableDays(doc, today);
   const { box, close } = openSheet(`<h2>Scegli l’allenamento</h2>
     ${groups.map(({ p, days }) => `<h3 class="sheet-sub">${esc(p.emoji || '💪')} ${esc(p.name)}</h3>
       ${days.length ? days.map((t) => tplButton(t, t.dayName ?? t.name, t.id === nextId ? 'Prossimo' : '')).join('')
@@ -222,7 +209,7 @@ function start(tpl) {
 
 /** Past day: template (or free) + minutes, then the created (concluded) session opens for editing. */
 function openAddPast(doc, day, today, preset = null) {
-  const list = liveTemplates(doc, today);
+  const list = choosableList(doc, today, { withConcluded: true });      // a past workout may belong to a concluded scheda
   const sel = preset && list.some((t) => t.id === preset) ? preset : '';
   const minsOf = (id) => {
     const t = list.find((x) => x.id === id);
@@ -296,7 +283,7 @@ export function render(el, { doc, param, today }) {
   const ro = isReadOnly();
   const isToday = day === today;
   const title = isToday ? 'Oggi' : day === addDays(today, -1) ? 'Ieri' : fmtDay(day).split(' ')[0];
-  const { groups, loose } = choices(doc, today);
+  const { groups, loose } = choosableDays(doc, today);
   const openSessions = doc.sessions.filter((s) => !s.deleted && s.end == null).sort((a, b) => b.start - a.start);
   const doneToday = doc.sessions.filter((s) => isConcluded(s) && s.date === day).sort((a, b) => a.start - b.start);
   const p = planned(doc, day, today);
