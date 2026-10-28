@@ -205,6 +205,10 @@ textarea { resize: vertical; }
 .rows a.row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; min-height: 44px; }
 .rows .row b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rows .row span { min-width: 0; }
+.rows li:has(.ex-actions) { flex-wrap: wrap; }
+.rows li .grow { flex: 1; min-width: 11rem; }
+.rows li .grow b, .rows li .grow small { display: block; }
+.ex-actions { flex: none; }
 .order { display: flex; gap: 4px; }
 .order button { width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); }
 .order button:disabled { opacity: .3; }
@@ -236,11 +240,22 @@ details .rows li { padding-left: 0; padding-right: 0; }
 .emoji-row button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); font-size: 1.25rem; }
 .emoji-row button.on { border-color: var(--accent-strong); box-shadow: 0 0 0 2px var(--accent-strong); }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.danger-zone { display: flex; gap: 8px; border-top: 1px solid var(--line); padding-top: 16px; }
-.danger-zone .btn { flex: 1; }
+.danger-zone { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line); padding-top: 16px; }
+.danger-zone .btn { flex: 1; min-width: 6.5rem; }
 .tpl-ex { display: grid; gap: 10px; }
 .tpl-ex .ex-head { display: flex; align-items: center; gap: 8px; }
 .tpl-ex .ex-head b { flex: 1; min-width: 0; }
+.tpl-ex .ex-head .grow { flex: 1; min-width: 0; }
+.tpl-ex.grouped { border-left: 5px solid var(--accent); }
+.tset { display: grid; grid-template-columns: 1.6rem repeat(var(--n, 2), minmax(0, 1fr)) 44px; align-items: center; gap: 6px; }
+.tset.n1 { --n: 1; }
+.tset.n2 { --n: 2; }
+.tset.n3 { --n: 3; }
+.tset input { min-width: 0; padding: 11px 6px; text-align: center; }
+.tset .lbl { text-align: center; font-weight: 700; color: var(--muted); }
+.tset .lbl.warm { color: var(--accent-strong); }
+.errors { display: grid; gap: 6px; }
+.errors:empty { display: none; }
 
 /* ---- Chips ---------------------------------------------------------- */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
