@@ -55,6 +55,8 @@ export const onSync = (fn) => bus.addEventListener('sync', fn);
 
 const emit = (type = 'change', detail = {}) => bus.dispatchEvent(new CustomEvent(type, { detail }));
 
+const SYNC_NOTICE = 'Sincronizzazione:';
+
 export function clearNotice() {
   if (readOnly) return;                           // the read-only banner stays
   notice = '';
@@ -506,6 +508,7 @@ function adopt(merged) {
 
 /** Throws SyncError (wrong password, bad token, offline...). */
 export async function connectSync(token, password) {
+  if (readOnly) throw new Error('Memoria non disponibile: impossibile collegare la sincronizzazione.');
   const r = await connect({ token: token.trim(), password, local: doc });
   syncCfg = { ...r.cfg, at: now() };
   storeSyncCfg();
@@ -535,7 +538,7 @@ export function flushSync() {
 export async function runSync() {
   clearTimeout(syncTimer);
   syncTimer = 0;
-  if (!syncCfg) return;
+  if (!syncCfg || readOnly) return;               // read-only: nothing could be saved after the merge
   if (syncing) {
     syncAgain = true;
     return;
@@ -552,12 +555,13 @@ export async function runSync() {
     adopt(r.doc);
     syncCfg.at = now();
     storeSyncCfg();
+    if (notice.startsWith(SYNC_NOTICE)) notice = '';   // an earlier failure is resolved
     setSync('idle', '', syncCfg.at);
   } catch (e) {
     if (e instanceof SyncError && e.code === 'network') {
       setSync('offline', e.message);
     } else {
-      notice = `Sincronizzazione: ${e.message || 'errore imprevisto.'}`;
+      if (!readOnly) notice = `${SYNC_NOTICE} ${e.message || 'errore imprevisto.'}`;
       setSync('error', e.message || 'Errore imprevisto.');
     }
   } finally {

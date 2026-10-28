@@ -33,7 +33,7 @@ function syncSection() {
           <input name="password" type="password" value="${esc(draft.password)}" autocomplete="new-password"></label>
         <small>Almeno 8 caratteri, la stessa su tutti i dispositivi. Se la dimentichi la copia sul cloud non è
           recuperabile; i dati sui dispositivi restano.</small>
-        <button class="btn primary block" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Collego…' : 'Collega'}</button>
+        <button class="btn primary block" type="submit" ${busy || isReadOnly() ? 'disabled' : ''}>${busy ? 'Collego…' : 'Collega'}</button>
       </form>
       ${note(syncMsg)}
     </section>`;
@@ -47,7 +47,7 @@ function syncSection() {
   return `<section class="card settings"><h2>Sincronizzazione</h2>
     <p>Stato: <b class="${s.state === 'error' ? 'err-text' : ''}">${esc(status)}</b></p>
     <div class="btn-row">
-      <button class="btn primary" data-act="sync-now" ${s.state === 'syncing' ? 'disabled' : ''}>Sincronizza ora</button>
+      <button class="btn primary" data-act="sync-now" ${s.state === 'syncing' || isReadOnly() ? 'disabled' : ''}>Sincronizza ora</button>
       <button class="btn danger" data-act="sync-off">Scollega</button>
     </div>
     ${note(syncMsg)}
@@ -56,7 +56,7 @@ function syncSection() {
 
 function prefsSection(doc, ro) {
   const { theme, kgStep, rest, sound } = doc.settings;
-  const opt = (v, label) => `<label class="pick"><input type="radio" name="theme" value="${v}" ${theme === v ? 'checked' : ''}><span>${label}</span></label>`;
+  const opt = (v, label) => `<label class="pick"><input type="radio" name="theme" value="${v}" ${theme === v ? 'checked' : ''} ${ro ? 'disabled' : ''}><span>${label}</span></label>`;
   const steps = KG_STEPS.map((v) => `<option value="${v}" ${v === kgStep ? 'selected' : ''}>${fmtKg(v)} kg</option>`).join('');
   const odd = KG_STEPS.includes(kgStep) ? '' : `<option value="${esc(kgStep)}" selected>${esc(fmtKg(kgStep))} kg</option>`;
   return `<section class="card settings"><h2>Tema</h2>
@@ -86,7 +86,7 @@ export function render(el, { doc, refresh }) {
         uniti: per ogni elemento vince la modifica più recente, niente viene sovrascritto per errore.</p>
       <div class="btn-row">
         <button class="btn primary" data-act="export">Esporta backup</button>
-        <button class="btn" data-act="import">Importa backup</button>
+        <button class="btn" data-act="import" ${isReadOnly() ? 'disabled' : ''}>Importa backup</button>
         <input class="sr-only" type="file" accept=".json,application/json" tabindex="-1" aria-hidden="true">
       </div>
       ${note(msg)}
