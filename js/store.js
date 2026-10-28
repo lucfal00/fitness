@@ -21,17 +21,32 @@ let syncTimer = 0;
 let syncing = false;
 let syncAgain = false;
 
-/** Wrap every live template that is not part of a scheda in a one-day scheda (idempotent). True when anything changed.
- *  The scheda id derives from the template id, so devices migrating the same data converge on the same program; when
- *  that program already holds the template it is re-attached. updatedAt values are never bumped (the new program
+/** Give every live, non-archived template a scheda (idempotent). True when anything changed. A template is loose when
+ *  its scheda is missing, deleted, or does not list it in seq: if that scheda is live it is appended to its seq (keeping
+ *  its dayName), else it is wrapped in a one-day scheda. Archived templates stay loose.
+ *  The new scheda id derives from the template id, so devices migrating the same data converge on the same program; when
+ *  that (non-deleted) program already holds the template it is re-attached. updatedAt values are never bumped (the new program
  *  inherits the template's), so a migration cannot win a merge over a real edit. */
 function migrateSchede(d) {
   let changed = false;
   for (const tpl of d.templates) {
-    if (tpl.deleted || tpl.scheda) continue;
+    if (tpl.deleted || tpl.archived) continue;
+    const own = tpl.scheda ? d.programs.find((p) => p.id === tpl.scheda) : null;
+    if (own && !own.deleted && own.seq?.includes(tpl.id)) continue;
+    if (own && isScheda(own) && Array.isArray(own.seq)) {             // orphan of a live scheda: back into its rotation
+      own.seq.push(tpl.id);
+      if (!tpl.dayName) {
+        const used = new Set(d.templates.filter((t) => t.scheda === own.id && !t.deleted).map((t) => t.dayName));
+        let n = own.seq.length;
+        while (used.has(`Giorno ${n}`)) n++;
+        tpl.dayName = `Giorno ${n}`;
+      }
+      changed = true;
+      continue;
+    }
     let id = `p_${String(tpl.id).replace(/^t_/, '')}`;
     const same = d.programs.find((p) => p.id === id);
-    if (same?.seq?.includes(tpl.id)) {
+    if (same && !same.deleted && same.seq?.includes(tpl.id)) {
       tpl.scheda = id;
       if (!tpl.dayName) tpl.dayName = 'Giorno 1';
       changed = true;
@@ -44,7 +59,7 @@ function migrateSchede(d) {
       updatedAt: tpl.updatedAt ?? 0,
     });
     tpl.scheda = id;
-    tpl.dayName = 'Giorno 1';
+    if (!tpl.dayName) tpl.dayName = 'Giorno 1';
     changed = true;
   }
   return changed;
@@ -442,7 +457,7 @@ export function duplicateSchedaDay(tplId) {
   const t = find(doc.templates, tplId);
   const p = t ? liveScheda(t.scheda) : null;
   if (!p) return null;
-  const dayName = cleanText(`${t.dayName} (copia)`);
+  const dayName = cleanText(`${t.dayName ?? t.name} (copia)`);
   const copy = {
     ...clone(t), id: newId('t_'), dayName, name: dayLabel(p, dayName), order: nextOrder(doc.templates),
     archived: false, deleted: false, updatedAt: now(),

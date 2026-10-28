@@ -316,13 +316,13 @@ test('adherence: scheda without days is scored per week', () => {
   assert.equal(L.adherence(over, '2026-11-02', '2026-11-08', '2026-11-08'), 1);
 });
 
-test('adherence: weeks before the activation are excluded; activation mid-week owns that week', () => {
+test('adherence: weeks before the activation are excluded; activation mid-week does not count that week', () => {
   const later = scheda({ from: '2026-11-09' });
   const doc = docWith({ programs: [later], sessions: [...inWeek('2026-10-26', 3), ...inWeek('2026-11-09', 2)] });
   assert.equal(L.adherence(doc, '2026-10-26', '2026-11-15', '2026-11-16'), 2 / 3);
   assert.equal(L.adherence(doc, '2026-10-26', '2026-11-08', '2026-11-15'), null);
   const mid = docWith({ programs: [scheda({ from: '2026-11-04' })], sessions: [sess('2026-11-05', 'A')] });
-  assert.equal(L.adherence(mid, '2026-11-02', '2026-11-08', '2026-11-09'), 1 / 3);
+  assert.equal(L.adherence(mid, '2026-11-02', '2026-11-08', '2026-11-09'), null);
 });
 
 test('adherence: scheda change mid-period sums the contributions of each', () => {
@@ -442,8 +442,8 @@ test('nextRotationIndex follows the last day by template, not by stale position'
   assert.equal(L.nextRotationIndex(doc, p), 2);
   ({ p, doc } = afterB(['B', 'C', 'A', 'B']));                  // twice, rot.i no longer B: first occurrence
   assert.equal(L.nextRotationIndex(doc, p), 1);
-  ({ p, doc } = afterB(['A', 'C']));                            // B left the rotation: recorded position
-  assert.equal(L.nextRotationIndex(doc, p), 0);
+  ({ p, doc } = afterB(['A', 'C']));                            // B left the rotation: what now sits where B was
+  assert.equal(L.nextRotationIndex(doc, p), 1);
   // planned today after the session follows the same position
   const q = scheda({ seq: ['A', 'A2', 'B', 'C'], days: [1, 2, 3, 4, 5, 6, 7] });
   const d2 = docWith({ programs: [q], sessions: [sess('2026-11-04', 'B', { rot: { p: 'S', i: 1 } })] });
@@ -451,15 +451,52 @@ test('nextRotationIndex follows the last day by template, not by stale position'
   assert.deepEqual(L.planned(d2, '2026-11-05', '2026-11-04').items, ['C']);
 });
 
-test('adherence: weekly sessions are clamped to the range and to the activation', () => {
+test('rotation after the day just done was deleted', () => {
+  const run = (seq, doneTpl, i) => {
+    const p = scheda({ seq, days: [1, 2, 3, 4, 5, 6, 7] });
+    return { p, doc: docWith({ programs: [p], sessions: [sess('2026-11-02', 'A', { rot: { p: 'S', i: 0 } }), sess('2026-11-04', doneTpl, { rot: { p: 'S', i } })] }) };
+  };
+  let { p, doc } = run(['A', 'C'], 'B', 1);                     // did A, B; B deleted from [A, B, C]: C
+  assert.equal(L.nextRotationIndex(doc, p), 1);
+  assert.equal(p.seq[L.nextRotationIndex(doc, p)], 'C');
+  ({ p, doc } = run(['A', 'B'], 'C', 2));                       // did C; C deleted: wraps to A
+  assert.equal(L.nextRotationIndex(doc, p), 0);
+  // today's card after deleting today's done day: the day now at its position
+  ({ p, doc } = run(['A', 'C'], 'B', 1));
+  assert.deepEqual(L.planned(doc, '2026-11-04', '2026-11-04').items, ['C']);
+  ({ p, doc } = run(['A', 'B'], 'C', 2));
+  assert.deepEqual(L.planned(doc, '2026-11-04', '2026-11-04').items, ['A']);
+});
+
+test('adherence: a week counts only if its Monday is in the range and not before the activation', () => {
+  // activation on Wed: that week does not count at all (its sessions neither)
   const p = scheda({ from: '2026-11-04' });
-  const doc = docWith({ programs: [p], sessions: [sess('2026-11-02', 'A'), sess('2026-11-05', 'A'), sess('2026-11-07', 'A')] });
-  // activation on Wed: the Monday session is not counted
-  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-08', '2026-11-09'), 2 / 3);
-  // range Fri..Sun: only the Saturday session
-  assert.equal(L.adherence(doc, '2026-11-06', '2026-11-08', '2026-11-09'), 1 / 3);
-  // range ends before the later sessions
-  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-05', '2026-11-09'), 1 / 3);
+  const doc = docWith({ programs: [p], sessions: [sess('2026-11-02', 'A'), sess('2026-11-05', 'A'), sess('2026-11-07', 'A'), ...inWeek('2026-11-09', 3)] });
+  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-08', '2026-11-09'), null);
+  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-15', '2026-11-16'), 1);               // only the second week
+  // activation on Monday: the week counts, sessions over the whole week
+  const mon = scheda({ from: '2026-11-02' });
+  const d2 = docWith({ programs: [mon], sessions: [sess('2026-11-05', 'A'), sess('2026-11-07', 'A')] });
+  assert.equal(L.adherence(d2, '2026-11-02', '2026-11-08', '2026-11-09'), 2 / 3);
+  // range Fri..Sun: Monday outside the range, no counted week
+  assert.equal(L.adherence(d2, '2026-11-06', '2026-11-08', '2026-11-09'), null);
+  // range ending mid-week: the whole week is counted, capped at today
+  assert.equal(L.adherence(d2, '2026-11-02', '2026-11-05', '2026-11-09'), 2 / 3);
+  // running week: target min(done, perWeek)
+  assert.equal(L.adherence(d2, '2026-11-02', '2026-11-08', '2026-11-06'), 1);
+  // perfect 3x/week user: every month is 100%
+  const sessions = [];
+  for (let w = '2026-09-28'; w <= '2026-11-30'; w = L.addDays(w, 7)) sessions.push(...inWeek(w, 3));
+  const perfect = docWith({ programs: [scheda({ from: '2026-09-28' })], sessions });
+  assert.equal(L.adherence(perfect, '2026-11-01', '2026-11-30', '2026-12-10'), 1);
+  assert.equal(L.adherence(perfect, '2026-10-01', '2026-10-31', '2026-12-10'), 1);
+  // scheda starting Nov 1 (a Sunday): October has no counted week
+  const nov = docWith({ programs: [scheda({ from: '2026-11-01' })], sessions: inWeek('2026-10-26', 3) });
+  assert.equal(L.adherence(nov, '2026-10-01', '2026-10-31', '2026-12-10'), null);
+});
+
+test('adherence: sessions after today are not counted', () => {
+  const p = scheda({ from: '2026-11-02' });
   // sessions after today are not counted (data in the future)
   const future = docWith({ programs: [p], sessions: [sess('2026-11-05', 'A'), sess('2026-11-07', 'A')] });
   assert.equal(L.adherence(future, '2026-11-02', '2026-11-08', '2026-11-06'), 1);

@@ -113,7 +113,7 @@ const usableIds = (doc, ids) => ids.filter((id) => usable(doc, id));
 function usablePositions(doc, seq, idx) {
   const out = [];
   for (let k = 0; k < seq.length; k++) {
-    const i = (idx + k) % seq.length;
+    const i = (((idx + k) % seq.length) + seq.length) % seq.length;
     if (usable(doc, seq[i])) out.push(i);
   }
   return out;
@@ -130,11 +130,11 @@ function lastRotationSession(doc, id, date = null) {
 }
 
 /** Position in seq of a rotation session's day: its template where it still is (rot.i if it holds it, else the first
- *  occurrence), falling back to the recorded rot.i when the day left the rotation. Reorders/edits do not skew "next". */
+ *  occurrence), falling back to rot.i - 1 when the day left the rotation (so "next" = +1 is what now sits at rot.i). Reorders/edits do not skew "next". */
 function rotationPosition(program, session) {
   const { seq } = program;
   const at = seq.indexOf(session.tpl);
-  if (at < 0) return session.rot.i;
+  if (at < 0) return session.rot.i - 1;
   return seq[session.rot.i] === session.tpl ? session.rot.i : at;
 }
 
@@ -155,7 +155,8 @@ function plannedRotation(doc, p, d, today) {
   const done = lastRotationSession(doc, p.id, today);
   if (done) {
     if (d === today) {
-      const pos = usablePositions(doc, p.seq, rotationPosition(p, done));
+      const at = rotationPosition(p, done);
+      const pos = usablePositions(doc, p.seq, p.seq.includes(done.tpl) ? at : at + 1);   // day deleted: what now sits there
       return pos.length ? { items: [p.seq[pos[0]]], count: 1 } : { items: [], count: 0 };
     }
     start = addDays(today, 1);
@@ -292,11 +293,10 @@ export function adherence(doc, from, to, today) {
   }
   const thisWeek = weekStart(today);
   for (let w = weekStart(from); w <= end; w = addDays(w, 7)) {
+    if (w < from) continue;                       // a week belongs to the period only if its Monday is inside it
     const p = weekOwner(doc, w);
-    if (!weekly(p)) continue;
-    const lo = [w, from, p.from].reduce((a, b) => (a > b ? a : b));     // only sessions inside the range and since activation
-    const hi = [addDays(w, 6), end].reduce((a, b) => (a < b ? a : b));
-    const done = countBetween(doc, lo, hi);
+    if (!weekly(p) || p.from == null || w < p.from) continue;   // ... and not before the activation (Monday only)
+    const done = weekDone(doc, w, today);         // the whole week, up to today
     ok += Math.min(done, p.perWeek);
     prev += w === thisWeek ? Math.min(done, p.perWeek) : p.perWeek;   // the running week is never missed
   }

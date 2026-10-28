@@ -300,8 +300,9 @@ test('store: migration wraps loose templates in 1-day schede, is idempotent and 
   mem.set('fitness.v1', JSON.stringify(d0));
   const s1 = await freshStore(memStorage(mem));
   const docA = s1.getDoc();
-  assert.equal(docA.programs.filter((p) => p.id !== 'p_exists').length, 2);
-  for (const [tid, name, emoji, color] of [['t_aaaaaa', 'Push', '🔥', '#aa0000'], ['t_bbbbbb', 'Pull', '🚣', '#0000aa']]) {
+  assert.equal(docA.programs.filter((p) => p.id !== 'p_exists').length, 1);          // archived Pull stays loose
+  assert.equal(docA.templates.find((x) => x.id === 't_bbbbbb').scheda, undefined);
+  for (const [tid, name, emoji, color] of [['t_aaaaaa', 'Push', '🔥', '#aa0000']]) {
     const tpl = docA.templates.find((x) => x.id === tid);
     const p = docA.programs.find((x) => x.id === tpl.scheda);
     assert.deepEqual([p.kind, p.name, p.emoji, p.color, p.perWeek, p.days, p.from, p.to, p.seq, p.deleted], ['rotation', name, emoji, color, 1, null, null, null, [tid], false]);
@@ -309,7 +310,7 @@ test('store: migration wraps loose templates in 1-day schede, is idempotent and 
   }
   assert.equal(docA.templates.find((x) => x.id === 't_cccccc').scheda, undefined);
   assert.equal(docA.templates.find((x) => x.id === 't_dddddd').scheda, 'p_exists');
-  assert.equal(JSON.parse(mem.get('fitness.v1')).programs.length, 3);       // persisted
+  assert.equal(JSON.parse(mem.get('fitness.v1')).programs.length, 2);       // persisted
   // second load: nothing changes, nothing is written
   let writes = 0;
   const counting = { ...memStorage(mem), setItem: (k, v) => { writes++; mem.set(k, String(v)); } };
@@ -467,6 +468,121 @@ test('store: migration also runs after importBackup', async () => {
   assert.equal(JSON.parse(mem.get('fitness.v1')).programs.length, 1);              // persisted
   await s.importBackup(file);                                                       // idempotent
   assert.equal(s.getDoc().programs.length, 1);
+});
+
+const migT = (id, name, o = {}) => ({ id, name, emoji: '🔥', color: '#aa0000', items: [], order: 0, archived: false, deleted: false, updatedAt: 5, ...o });
+const migP = (id, seq, o = {}) => ({ id, name: id, kind: 'rotation', perWeek: 2, days: null, seq, weeks: [], from: null, to: null, deleted: false, updatedAt: 3, ...o });
+
+test('store: migration leaves archived templates loose and hidden', async () => {
+  const mem = new Map();
+  const d0 = emptyDoc();
+  d0.templates = [migT('t_aaaaaa', 'Old', { archived: true }), migT('t_bbbbbb', 'Orphan', { archived: true, scheda: 'p_gone', dayName: 'X' })];
+  mem.set('fitness.v1', JSON.stringify(d0));
+  const s = await freshStore(memStorage(mem));
+  assert.equal(s.getDoc().programs.length, 0);
+  assert.equal(s.getDoc().templates[0].scheda, undefined);
+  assert.equal(s.getDoc().templates[1].scheda, 'p_gone');
+  assert.equal(L.workoutLabel(s.getDoc(), 't_aaaaaa'), 'Old');
+});
+
+test('store: migration appends an orphan to its live scheda and wraps the orphan of a deleted one', async () => {
+  const mem = new Map();
+  const d0 = emptyDoc();
+  d0.templates = [
+    migT('t_aaaaaa', 'A', { scheda: 'p_live', dayName: 'Petto' }), migT('t_bbbbbb', 'B', { scheda: 'p_live' }),
+    migT('t_cccccc', 'Old day', { scheda: 'p_dead', dayName: 'Gambe' }), migT('t_dddddd', 'Lost', { scheda: 'p_missing', dayName: 'Spalle' }),
+    migT('t_eeeeee', 'In seq', { scheda: 'p_live', dayName: 'Giorno 1' }),
+  ];
+  d0.programs = [migP('p_live', ['t_eeeeee']), migP('p_dead', ['t_cccccc'], { deleted: true })];
+  mem.set('fitness.v1', JSON.stringify(d0));
+  const s = await freshStore(memStorage(mem));
+  const d = s.getDoc();
+  const tpl = (id) => d.templates.find((x) => x.id === id);
+  assert.deepEqual(d.programs.find((p) => p.id === 'p_live').seq, ['t_eeeeee', 't_aaaaaa', 't_bbbbbb']);
+  assert.equal(tpl('t_aaaaaa').dayName, 'Petto');                                    // kept
+  assert.equal(tpl('t_bbbbbb').dayName, 'Giorno 3');                                 // position rule
+  assert.equal(d.programs.find((p) => p.id === 'p_live').updatedAt, 3);              // never bumped
+  for (const id of ['t_cccccc', 't_dddddd']) {
+    const p = d.programs.find((x) => x.id === tpl(id).scheda);
+    assert.ok(p && !p.deleted && p.id !== 'p_dead' && p.id !== 'p_missing');
+    assert.deepEqual(p.seq, [id]);
+  }
+  assert.equal(tpl('t_cccccc').dayName, 'Gambe');
+  const n = d.programs.length;
+  const s2 = await freshStore(memStorage(mem));                                      // idempotent
+  assert.equal(s2.getDoc().programs.length, n);
+  assert.deepEqual(s2.getDoc().programs.find((p) => p.id === 'p_live').seq, ['t_eeeeee', 't_aaaaaa', 't_bbbbbb']);
+});
+
+test('store: migration does not re-attach to a deleted deterministic scheda', async () => {
+  const mem = new Map();
+  const d0 = emptyDoc();
+  d0.templates = [migT('t_aaaaaa', 'Re')];
+  d0.programs = [migP('p_aaaaaa', ['t_aaaaaa'], { deleted: true })];
+  mem.set('fitness.v1', JSON.stringify(d0));
+  const s = await freshStore(memStorage(mem));
+  const tpl = s.getDoc().templates[0];
+  assert.notEqual(tpl.scheda, 'p_aaaaaa');
+  const p = s.getDoc().programs.find((x) => x.id === tpl.scheda);
+  assert.deepEqual([p.deleted, p.seq], [false, ['t_aaaaaa']]);
+});
+
+test('store: duplicateSchedaDay names a day without dayName after its template name', async () => {
+  const mem = new Map();
+  const d0 = emptyDoc();
+  d0.templates = [migT('t_aaaaaa', 'Push', { scheda: 'p_aaaaaa' })];
+  d0.programs = [migP('p_aaaaaa', ['t_aaaaaa'])];
+  mem.set('fitness.v1', JSON.stringify(d0));
+  const s = await freshStore(memStorage(mem));
+  const copy = s.duplicateSchedaDay('t_aaaaaa');
+  assert.equal(s.getDoc().templates.find((t) => t.id === copy).dayName, 'Push (copia)');
+});
+
+test('store: sync migrates unmigrated remote templates once; the next round changes nothing', async () => {
+  const { connect } = await import('../js/sync.js');
+  let stored = null;
+  let patches = 0;
+  const res = (status, body) => ({ ok: status < 300, status, json: async () => body, text: async () => String(body) });
+  const fetchFn = async (url, opts) => {
+    if (opts.method === 'GET' && url.includes('/gists?')) return res(200, stored ? [{ id: 'g9', files: { 'fitness-sync.json': {} } }] : []);
+    if (opts.method === 'POST') {
+      stored = JSON.parse(opts.body).files['fitness-sync.json'].content;
+      return res(201, { id: 'g9' });
+    }
+    if (opts.method === 'PATCH') {
+      patches++;
+      stored = JSON.parse(opts.body).files['fitness-sync.json'].content;
+      return res(200, {});
+    }
+    return res(200, { files: { 'fitness-sync.json': { content: stored, truncated: false } } });
+  };
+  const remote = emptyDoc();
+  remote.templates = [migT('t_aaaaaa', 'Push'), migT('t_bbbbbb', 'Pull')];
+  await connect({ token: 't', password: 'password1', local: remote, fetchFn, iterations: 1000 });
+
+  const savedFetch = globalThis.fetch;
+  const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  globalThis.fetch = fetchFn;
+  Object.defineProperty(globalThis, 'navigator', { value: { onLine: true }, configurable: true, writable: true });
+  try {
+    const s = await freshStore(memStorage());
+    await s.connectSync('t', 'password1');                                           // adopt: first migration
+    const progs = () => s.getDoc().programs.map((p) => p.id).sort();
+    const first = progs();
+    assert.equal(first.length, 2);
+    assert.ok(s.getDoc().templates.every((t) => first.includes(t.scheda) && t.dayName === 'Giorno 1'));
+    await s.runSync();                                                               // pushes the migrated schede
+    assert.equal(patches, 1);
+    const snapshot = JSON.stringify(s.getDoc());
+    await s.runSync();                                                               // second round: nothing changes
+    assert.equal(patches, 1);
+    assert.deepEqual(progs(), first);
+    assert.equal(JSON.stringify(s.getDoc()), snapshot);
+    s.disconnectSync();
+  } finally {
+    globalThis.fetch = savedFetch;
+    if (nav) Object.defineProperty(globalThis, 'navigator', nav); else delete globalThis.navigator;
+  }
 });
 
 // Wake lock: fake navigator/document installed before a fresh timer.js import (its visibility listener is registered at import).

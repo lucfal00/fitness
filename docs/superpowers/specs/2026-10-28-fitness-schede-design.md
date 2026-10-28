@@ -19,6 +19,8 @@ se salti un allenamento, la volta dopo l'app ripropone lo stesso giorno. Nessuno
 - Il nome visualizzato di un allenamento è `"<nome scheda> · <dayName>"`.
 - **Migrazione all'avvio** (idempotente, nel caricamento del documento): ogni template non eliminato senza `scheda` viene avvolto
   in una scheda da 1 giorno (`name` = nome del template, `perWeek: 1`, `days: null`, `from: null`), con `template.scheda` e `dayName = "Giorno 1"`.
+  I template archiviati restano sciolti. Un template la cui `scheda` manca, è eliminata o non lo elenca in `seq` è trattato come sciolto:
+  se la sua scheda è viva viene aggiunto in coda a `seq` (mantiene `dayName`), altrimenti avvolto in una nuova scheda da 1 giorno.
   I programmi `week`/`free` esistenti restano validi per i calcoli ma non hanno più una schermata di modifica.
 
 ## 3. Regole (estendono la spec §6)
@@ -33,6 +35,9 @@ se salti un allenamento, la volta dopo l'app ripropone lo stesso giorno. Nessuno
   contando solo settimane già iniziate e, per quella corrente, `perWeek` sostituito da `min(done_w, perWeek)` (la settimana in corso non conta come mancata).
   Con `days` resta la regola per giorno. Più programmi nel periodo: si sommano i contributi di ciascuno sui giorni/settimane in cui è attivo
   (una settimana appartiene alla scheda attiva il suo lunedì; se nessuna, alla prima attiva nella settimana).
+  Una settimana rientra in un periodo solo se il suo lunedì è dentro `[da, a]` e non precede l'attivazione `from` della scheda
+  (la settimana di attivazione conta solo se l'attivazione cade di lunedì); le sessioni si contano su tutta la settimana, fino a oggi;
+  un intervallo senza settimane contate dà `null`.
 - **Serie di settimane** (§6.5): per una scheda senza `days` la settimana è completa se `done_w ≥ perWeek`; settimana corrente contata se completa, altrimenti ignorata.
 
 ## 4. Schermate
