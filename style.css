@@ -492,3 +492,18 @@ details .rows li { padding-left: 0; padding-right: 0; }
   .stats-grid > .card { margin: 0; }
   .stats-grid > .st-wide { grid-column: 1 / -1; }
 }
+
+/* ---- Exercise detail / body ---------------------------------------- */
+.rep-table { width: 100%; border-collapse: collapse; }
+.rep-table th, .rep-table td { text-align: left; padding: 8px 0; border-top: 1px solid var(--line); font-weight: 600; }
+.rep-table tr:first-child th, .rep-table tr:first-child td { border-top: 0; }
+.rep-table td { text-align: right; font-variant-numeric: tabular-nums; }
+.rep-table th { color: var(--muted); font-weight: 600; }
+.body-form .two { margin: 0; }
+.body-form .two label.field { min-width: 0; }
+@media (min-width: 1000px) {
+  main:has(.body-grid) { max-width: 1160px; }
+  .body-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .body-grid > .card { margin: 0; }
+  .body-grid > .st-wide { grid-column: 1 / -1; }
+}
