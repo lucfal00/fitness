@@ -121,7 +121,7 @@ Un unico documento JSON in `localStorage` (chiave `fitness.v1`):
   "exercises": [{ "id": "x_8fk2la", "name": "Hip thrust", "kind": "weight", "measure": "reps",
     "group": "glutei", "also": ["femorali"], "deleted": false, "updatedAt": 1798364400000 }],
   "exerciseEdits": { "lib_panca_piana": { "name": "Panca", "hidden": false, "t": 1798364400000 } },
-  "templates": [{ "id": "t_k3j9x2", "name": "Push", "emoji": "💪", "color": "#f97316",
+  "templates": [{ "id": "t_k3j9x2", "name": "Push", "emoji": "💪", "color": "#16a34a",
     "order": 0, "archived": false, "deleted": false, "updatedAt": 1798364400000,
     "items": [{ "ex": "lib_panca_piana", "group": "g1", "rest": 90, "note": "",
       "sets": [{ "w": true, "reps": [10, 10], "kg": 40 }, { "reps": [8, 10], "kg": 60 }] }] }],
@@ -258,8 +258,8 @@ Solo set `done` e non `w`:
 index.html              shell + tab bar
 style.css               stile, token colore, tema chiaro/scuro
 manifest.webmanifest    nome "Fitness", icone, display standalone, scope "./"
-sw.js                   offline, cache "fitness-v1"
-icons/                  fitness-v1.svg, -192.png, -512.png, -maskable-512.png, -apple-180.png
+sw.js                   offline, cache "fitness-v2"
+icons/                  fitness-v2.svg, -192.png, -512.png, -maskable-512.png, -apple-180.png
 js/app.js               avvio, router hash, tema, registrazione SW
 js/store.js             unico modulo che scrive su localStorage; CRUD; evento change; backup; scheduling sync
 js/logic.js             date, programma attivo, previsti, rotazione, costanza, serie settimane (puro)
