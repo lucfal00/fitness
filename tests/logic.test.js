@@ -173,6 +173,34 @@ test('planned: rotation with days', () => {
   assert.deepEqual(L.planned(done, '2026-11-06', today).items, ['B']);
 });
 
+test('rotation with an archived template', () => {
+  const p = rotation();
+  const templates = ['A', 'B', 'C'].map((id) => tpl(id, { archived: id === 'B' }));
+  const today = '2026-11-02';
+  const doc = docWith({ programs: [p], templates });
+  const seqAt = (dd) => ['2026-11-02', '2026-11-04', '2026-11-06', '2026-11-09'].map((d) => L.planned(dd, d, today).items[0]);
+  assert.deepEqual(seqAt(doc), ['A', 'C', 'A', 'C']);
+  const afterA = docWith({ programs: [p], templates, sessions: [sess('2026-11-02', 'A', { rot: { p: 'P', i: 0 } })] });
+  assert.equal(L.nextRotationIndex(afterA, p), 2);
+  const afterC = docWith({ programs: [p], templates, sessions: [sess('2026-11-02', 'C', { rot: { p: 'P', i: 2 } })] });
+  assert.equal(L.nextRotationIndex(afterC, p), 0);
+  const none = docWith({ programs: [p], templates: ['A', 'B', 'C'].map((id) => tpl(id, { archived: true })) });
+  assert.deepEqual(L.planned(none, '2026-11-04', today), { items: [], count: 1 });
+  assert.equal(L.nextRotationIndex(none, p), 0);
+});
+
+test('planned: rotation uses the latest session by start', () => {
+  const p = rotation();
+  const today = '2026-11-04';
+  const sessions = [
+    sess('2026-11-04', 'B', { start: noon('2026-11-04') + 7200000, rot: { p: 'P', i: 1 } }),
+    sess('2026-11-04', 'A', { rot: { p: 'P', i: 0 } }),
+  ];
+  const doc = docWith({ programs: [p], sessions });
+  assert.deepEqual(L.planned(doc, today, today).items, ['B']);
+  assert.deepEqual(L.planned(doc, '2026-11-06', today).items, ['C']);
+});
+
 test('planned: rotation without days and free program', () => {
   for (const p of [rotation({ days: null }), prog({ kind: 'free', weeks: [] })]) {
     const doc = docWith({ programs: [p] });
@@ -202,6 +230,13 @@ test('adherence', () => {
   assert.equal(L.adherence(docWith({ programs: [] }), '2026-11-02', '2026-11-08', '2026-11-08'), null);
 });
 
+test('adherence: rotation with days', () => {
+  const p = rotation();
+  const doc = docWith({ programs: [p], sessions: [sess('2026-11-02', 'A', { rot: { p: 'P', i: 0 } })] });
+  // Mon done, Wed and Fri missed
+  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-08', '2026-11-08'), 1 / 3);
+});
+
 // one full week of P starting Monday `mon`: A, B, C, R
 const fullWeek = (mon) => [
   sess(mon, 'A'), sess(L.addDays(mon, 2), 'B'), sess(L.addDays(mon, 4), 'C'), sess(L.addDays(mon, 4), 'R'),
@@ -227,4 +262,12 @@ test('weekStreaks: free program counts weeks with a session', () => {
   const doc = docWith({ programs: [p], sessions });
   assert.deepEqual(L.weekStreaks(doc, '2026-12-02'), { current: 1, best: 2 });
   assert.deepEqual(L.weekStreaks(docWith({ programs: [], sessions: [] }), '2026-12-02'), { current: 0, best: 0 });
+});
+
+test('weekStreaks: rotation with days', () => {
+  const p = rotation();
+  const rs = (mon) => ['A', 'B', 'C'].map((id, i) => sess(L.addDays(mon, 2 * i), id, { rot: { p: 'P', i } }));
+  const sessions = [...rs('2026-11-02'), ...rs('2026-11-09'), sess('2026-11-16', 'A', { rot: { p: 'P', i: 0 } }), ...rs('2026-11-23')];
+  const doc = docWith({ programs: [p], sessions });
+  assert.deepEqual(L.weekStreaks(doc, '2026-11-29'), { current: 1, best: 2 });
 });

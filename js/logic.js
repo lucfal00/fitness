@@ -105,23 +105,33 @@ const usable = (doc, id) => doc.templates.some((t) => t.id === id && !t.archived
 
 const usableIds = (doc, ids) => ids.filter((id) => usable(doc, id));
 
-/** Next rotation step: last concluded rotation session's index + 1, else 0. */
-export function nextRotationIndex(doc, program) {
-  const len = program.seq.length;
-  let last = null;
-  for (const s of concluded(doc)) {
-    if (s.rot?.p === program.id && (!last || s.start > last.start)) last = s;
+/** Positions of seq (cyclic, starting at idx) whose template is usable. */
+function usablePositions(doc, seq, idx) {
+  const out = [];
+  for (let k = 0; k < seq.length; k++) {
+    const i = (idx + k) % seq.length;
+    if (usable(doc, seq[i])) out.push(i);
   }
-  return last && len ? (last.rot.i + 1) % len : 0;
+  return out;
 }
 
-/** First usable template at or after seq[idx] (cyclic), or null. */
-function pickRotation(doc, seq, idx) {
-  for (let k = 0; k < seq.length; k++) {
-    const id = seq[(idx + k) % seq.length];
-    if (usable(doc, id)) return id;
+/** Latest concluded session of rotation program `id`, by start; null if none. */
+function lastRotationSession(doc, id, date = null) {
+  let last = null;
+  for (const s of concluded(doc)) {
+    if (s.rot?.p !== id || (date != null && s.date !== date)) continue;
+    if (!last || s.start > last.start) last = s;
   }
-  return null;
+  return last;
+}
+
+/** Next rotation position in seq: first usable one after the last session's index, else 0. */
+export function nextRotationIndex(doc, program) {
+  const len = program.seq.length;
+  const last = lastRotationSession(doc, program.id);
+  const start = last && len ? (last.rot.i + 1) % len : 0;
+  const pos = usablePositions(doc, program.seq, start);
+  return pos.length ? pos[0] : start;
 }
 
 function plannedRotation(doc, p, d, today) {
@@ -129,11 +139,11 @@ function plannedRotation(doc, p, d, today) {
   if (d < today) return { items: [], count: 1 };
   const n = nextRotationIndex(doc, p);
   let start = today;
-  const doneToday = concluded(doc).filter((s) => s.date === today && s.rot?.p === p.id);
-  if (doneToday.length) {
+  const done = lastRotationSession(doc, p.id, today);
+  if (done) {
     if (d === today) {
-      const id = pickRotation(doc, p.seq, doneToday[doneToday.length - 1].rot.i);
-      return { items: id ? [id] : [], count: 1 };
+      const pos = usablePositions(doc, p.seq, done.rot.i);
+      return { items: pos.length ? [p.seq[pos[0]]] : [], count: 1 };
     }
     start = addDays(today, 1);
   }
@@ -142,8 +152,8 @@ function plannedRotation(doc, p, d, today) {
     if (doc.plan[k]?.items != null) continue;
     if (p.days.includes(weekday(k)) && activeProgram(doc, k)?.id === p.id) ahead++;
   }
-  const id = p.seq.length ? pickRotation(doc, p.seq, n + ahead) : null;
-  return { items: id ? [id] : [], count: 1 };
+  const pos = usablePositions(doc, p.seq, n);
+  return { items: pos.length ? [p.seq[pos[ahead % pos.length]]] : [], count: 1 };
 }
 
 /** Planned workouts of day d: { items: template ids, count }. */
