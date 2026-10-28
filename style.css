@@ -12,6 +12,7 @@
   --on-accent: #ffffff;
   --danger: #dc3545;
   --ok: #16a34a;
+  --on-ok: #ffffff;
   --warn-bg: #fff4d6;
   --warn-text: #5c4300;
   --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 6px 20px rgba(16, 24, 40, .06);
@@ -33,6 +34,7 @@
     --on-accent: #0f1117;
     --danger: #ff6b6b;
     --ok: #4ade80;
+    --on-ok: #0f1117;
     --warn-bg: #3a2f10;
     --warn-text: #ffe08a;
     --shadow: none;
@@ -52,6 +54,7 @@
   --on-accent: #0f1117;
   --danger: #ff6b6b;
   --ok: #4ade80;
+  --on-ok: #0f1117;
   --warn-bg: #3a2f10;
   --warn-text: #ffe08a;
   --shadow: none;
@@ -255,7 +258,7 @@ details .rows li { padding-left: 0; padding-right: 0; }
 
 /* ---- Switch --------------------------------------------------------- */
 .switch { position: relative; width: 44px; height: 26px; flex: none; }
-.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch input { position: absolute; inset: -9px 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }   /* 44 px hit area, 26 px visual */
 .switch span { position: absolute; inset: 0; border-radius: 13px; background: var(--track); transition: background .2s; }
 .switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
   background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .2s; }
@@ -307,11 +310,12 @@ details .rows li { padding-left: 0; padding-right: 0; }
   border: 2px solid var(--line); background: transparent; color: transparent;
   font-size: 1.2rem; font-weight: 700; transition: transform .15s, background .2s;
 }
-.check.on { background: var(--ok); border-color: var(--ok); color: #fff; }
-@media (max-width: 400px) {
-  .set-row { grid-template-columns: 1.6rem minmax(0, 1fr) auto auto 44px; gap: 3px; }
-  .stepper button { width: 36px; }
-  .stepper .val { min-width: 2.6em; }
+.check.on { background: var(--ok); border-color: var(--ok); color: var(--on-ok); }
+@media (max-width: 400px) {   /* keep 44 px targets: tighter label, gaps and value width instead */
+  .ex-card { padding: 10px; }
+  .set-row { grid-template-columns: 1.2rem minmax(0, 1fr) auto auto 44px; gap: 2px; }
+  .stepper { gap: 0; }
+  .stepper .val { min-width: 1.8em; padding: 11px 0; }
 }
 
 /* Rest bar: fixed above the tab bar. */
