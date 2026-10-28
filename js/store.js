@@ -56,6 +56,7 @@ export const onSync = (fn) => bus.addEventListener('sync', fn);
 const emit = (type = 'change', detail = {}) => bus.dispatchEvent(new CustomEvent(type, { detail }));
 
 export function clearNotice() {
+  if (readOnly) return;                           // the read-only banner stays
   notice = '';
   emit('sync');
 }
@@ -66,6 +67,7 @@ function persist(kind = 'import', id = null) {
     try {
       localStorage.setItem(KEY, JSON.stringify(doc));
     } catch {
+      readOnly = true;                            // §10: storage full -> persistent banner, read-only
       notice = 'Spazio esaurito: impossibile salvare. Esporta un backup.';
     }
   }
@@ -87,6 +89,8 @@ const nextOrder = (list) => Math.max(-1, ...list.filter((o) => !o.deleted).map((
 
 /** Create an own exercise, or update it when fields.id exists. Returns the id. */
 export function saveExercise(fields) {
+  if (readOnly) return null;
+  fields = 'name' in fields ? { ...fields, name: String(fields.name ?? '').trim().slice(0, 40) } : fields;
   const ex = fields.id ? find(doc.exercises, fields.id) : null;
   if (ex) {
     Object.assign(ex, fields, { updatedAt: now() });
@@ -103,6 +107,7 @@ export function saveExercise(fields) {
 
 /** Rename / hide a library exercise (stored as an edit, keyed by its lib_ id). */
 export function editLibraryExercise(id, patch) {
+  if (readOnly) return;
   const prev = doc.exerciseEdits[id] ?? {};
   const edit = { ...prev, t: now() };
   if ('name' in patch) edit.name = patch.name;
@@ -112,6 +117,7 @@ export function editLibraryExercise(id, patch) {
 }
 
 export function deleteExercise(id) {
+  if (readOnly) return;
   const ex = find(doc.exercises, id);
   if (!ex) return;
   ex.deleted = true;
@@ -123,6 +129,7 @@ export function deleteExercise(id) {
 
 /** Create (no id) or update a template; returns the id. */
 export function saveTemplate(t) {
+  if (readOnly) return null;
   const fields = { ...clone(t), name: String(t.name ?? '').trim().slice(0, 40) };
   const cur = t.id ? find(doc.templates, t.id) : null;
   if (cur) {
@@ -140,6 +147,7 @@ export function saveTemplate(t) {
 }
 
 export function deleteTemplate(id) {
+  if (readOnly) return;
   const t = find(doc.templates, id);
   if (!t) return;
   t.deleted = true;
@@ -148,6 +156,7 @@ export function deleteTemplate(id) {
 }
 
 export function archiveTemplate(id, on) {
+  if (readOnly) return;
   const t = find(doc.templates, id);
   if (!t) return;
   t.archived = !!on;
@@ -157,6 +166,7 @@ export function archiveTemplate(id, on) {
 
 /** Swap with the neighbour in the active list (dir = -1 up, +1 down). */
 export function moveTemplate(id, dir) {
+  if (readOnly) return;
   const list = doc.templates.filter((t) => !t.archived && !t.deleted).sort((a, b) => a.order - b.order);
   const i = list.findIndex((t) => t.id === id);
   const j = i + dir;
@@ -168,6 +178,7 @@ export function moveTemplate(id, dir) {
 }
 
 export function duplicateTemplate(id) {
+  if (readOnly) return null;
   const t = find(doc.templates, id);
   if (!t) return null;
   const copy = {
@@ -188,6 +199,7 @@ export function duplicateTemplate(id) {
 
 /** Create (no id) or update a program; from / to are kept unless given. Returns the id. */
 export function saveProgram(p) {
+  if (readOnly) return null;
   const fields = clone(p);
   const cur = p.id ? find(doc.programs, p.id) : null;
   if (cur) {
@@ -205,6 +217,7 @@ export function saveProgram(p) {
 
 /** Activate from `from` (to optional). A concluded program is activated as a copy (history stays). Returns the id used. */
 export function activateProgram(id, from, to = null) {
+  if (readOnly) return null;
   const p = find(doc.programs, id);
   if (!p) return null;
   let target = p;
@@ -225,6 +238,7 @@ export function activateProgram(id, from, to = null) {
 
 /** to = yesterday; a program that has not started yet becomes not activated. */
 export function endProgram(id) {
+  if (readOnly) return;
   const p = find(doc.programs, id);
   if (!p || p.from == null) return;
   const today = todayKey();
@@ -239,6 +253,7 @@ export function endProgram(id) {
 }
 
 export function deleteProgram(id) {
+  if (readOnly) return;
   const p = find(doc.programs, id);
   if (!p) return;
   p.deleted = true;
@@ -254,12 +269,14 @@ function putPlan(d, items) {
 
 /** items replaces the day's planned list ([] = skipped); null restores the program's plan. */
 export function setPlan(d, items) {
+  if (readOnly) return;
   putPlan(d, items);
   save('plan', d);
 }
 
 /** Move one planned workout (template id) from one day to another. */
 export function movePlanned(fromDay, toDay, tplId) {
+  if (readOnly) return;
   if (fromDay === toDay) return;
   const src = [...planned(doc, fromDay).items];
   const i = src.indexOf(tplId);
@@ -292,15 +309,19 @@ function buildItems(tpl, done) {
 
 const liveTemplate = (id) => (id ? doc.templates.find((t) => t.id === id && !t.deleted) ?? null : null);
 
+/** rot (§6.3): {p, i} when tpl is the next step of the rotation program active on `date`, else null. */
+function rotationFor(date, tpl) {
+  const prog = tpl ? activeProgram(doc, date) : null;
+  if (prog?.kind !== 'rotation' || !prog.seq.length) return null;
+  const i = nextRotationIndex(doc, prog);
+  return prog.seq[i] === tpl ? { p: prog.id, i } : null;
+}
+
 /** New open session; sets rot (§6.3) when it is the next step of the active rotation. Returns the id. */
 export function startSession({ date = todayKey(), tpl = null } = {}) {
+  if (readOnly) return null;
   const t = liveTemplate(tpl);
-  let rot = null;
-  const prog = t ? activeProgram(doc, date) : null;
-  if (prog?.kind === 'rotation' && prog.seq.length) {
-    const i = nextRotationIndex(doc, prog);
-    if (prog.seq[i] === tpl) rot = { p: prog.id, i };
-  }
+  const rot = rotationFor(date, t ? t.id : null);
   const id = newId('s_');
   const ts = now();
   doc.sessions.push({
@@ -322,6 +343,7 @@ export function openSessionId() {
 
 /** mutator(session) edits in place; stamped and saved. */
 export function updateSession(id, mutator) {
+  if (readOnly) return;
   const s = find(doc.sessions, id);
   if (!s) return;
   mutator(s);
@@ -352,8 +374,9 @@ function templateFromSession(tpl, s) {
 }
 
 export function finishSession(id, { rpe = null, note = '', updateTemplate = false } = {}) {
+  if (readOnly) return;
   const s = find(doc.sessions, id);
-  if (!s) return;
+  if (!s || s.deleted || s.end != null) return;
   s.end = now();
   s.rpe = rpe;
   s.note = note;
@@ -365,6 +388,7 @@ export function finishSession(id, { rpe = null, note = '', updateTemplate = fals
 
 /** Soft delete. */
 export function discardSession(id) {
+  if (readOnly) return;
   const s = find(doc.sessions, id);
   if (!s) return;
   s.deleted = true;
@@ -374,13 +398,14 @@ export function discardSession(id) {
 
 /** Past workout entered by hand: starts at 12:00 of the day, lasts `minutes`; sets are marked done. */
 export function addPastSession({ date, tpl = null, minutes = 60 }) {
+  if (readOnly) return null;
   const t = liveTemplate(tpl);
   const d = fromKey(date);
   d.setHours(12, 0, 0, 0);
   const start = d.getTime();
   const id = newId('s_');
   doc.sessions.push({
-    id, date, start, end: start + minutes * 60000, tpl: t ? t.id : null, rot: null, rpe: null, note: '',
+    id, date, start, end: start + minutes * 60000, tpl: t ? t.id : null, rot: rotationFor(date, t ? t.id : null), rpe: null, note: '',
     deleted: false, updatedAt: now(), items: buildItems(t, true),
   });
   save('session', id);
@@ -391,6 +416,7 @@ export function addPastSession({ date, tpl = null, minutes = 60 }) {
 
 /** Merge fields into the day's entry; null / undefined / NaN removes a field (an entry with only t is empty). */
 export function setBody(d, patch) {
+  if (readOnly) return;
   const e = { ...doc.body[d] };
   for (const [k, v] of Object.entries(patch)) {
     if (v == null || Number.isNaN(v)) delete e[k];
@@ -403,6 +429,7 @@ export function setBody(d, patch) {
 // ---- Settings ------------------------------------------------------------
 
 export function setSetting(k, v) {
+  if (readOnly) return;
   doc.settings[k] = v;
   persist('settings', k);                         // device-local: nothing to upload
 }
@@ -433,6 +460,7 @@ export async function exportBackup() {
 
 /** Any failure (not JSON, wrong shape, malformed elements) throws 'Backup non valido.' and changes nothing. */
 export async function importBackup(file) {
+  if (readOnly) throw new Error('Memoria non disponibile: impossibile importare.');
   let r;
   try {
     const data = JSON.parse(await file.text());

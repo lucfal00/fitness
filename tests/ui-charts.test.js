@@ -5,6 +5,7 @@ import { fmtKg, fmtDuration, esc, safeColor } from '../js/ui.js';
 import { stackedBars } from '../js/charts.js';
 import { bodyMap } from '../js/bodymap.js';
 import { GROUPS } from '../js/library.js';
+import { todayKey, addDays } from '../js/logic.js';
 
 test('ui formatting', () => {
   assert.equal(fmtKg(62.5), '62,5');
@@ -76,4 +77,102 @@ test('store: mutations, session lifecycle, import failure', async () => {
   assert.equal(JSON.stringify(s.getDoc()), before);
   assert.ok(events.includes('session') && events.includes('plan'));
   assert.equal(JSON.parse(mem.get('fitness.v1')).templates.length, 1);
+});
+
+// Fresh store module per call (cache-busting query) with a controllable fake localStorage.
+let fresh = 0;
+async function freshStore(ls) {
+  globalThis.localStorage = ls;
+  const s = await import(`../js/store.js?case=${++fresh}`);
+  s.load();
+  return s;
+}
+const memStorage = (mem = new Map(), { failSet = false } = {}) => ({
+  getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+  setItem: (k, v) => { if (failSet) throw new Error('quota'); mem.set(k, String(v)); },
+  removeItem: (k) => mem.delete(k),
+});
+
+test('store: unavailable storage -> read-only with notice, mutations are no-ops', async () => {
+  const s = await freshStore({ getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); } });
+  assert.equal(s.isReadOnly(), true);
+  assert.match(s.getNotice(), /Memoria del browser non disponibile/);
+  assert.equal(s.saveTemplate({ name: 'X' }), null);
+  assert.equal(s.getDoc().templates.length, 0);
+  s.clearNotice();
+  assert.notEqual(s.getNotice(), '');
+});
+
+test('store: corrupt JSON is kept under .corrupt and the doc restarts empty', async () => {
+  const mem = new Map([['fitness.v1', '{not json']]);
+  const s = await freshStore(memStorage(mem));
+  assert.equal(mem.get('fitness.v1.corrupt'), '{not json');
+  assert.equal(s.getDoc().templates.length, 0);
+  assert.match(s.getNotice(), /danneggiati/);
+  assert.equal(s.isReadOnly(), false);
+});
+
+test('store: quota failure on save -> read-only, banner persists, later mutations ignored', async () => {
+  const s = await freshStore(memStorage(new Map(), { failSet: true }));
+  s.saveTemplate({ name: 'A' });
+  assert.equal(s.isReadOnly(), true);
+  assert.match(s.getNotice(), /Spazio esaurito/);
+  s.clearNotice();
+  assert.match(s.getNotice(), /Spazio esaurito/);
+  const n = s.getDoc().templates.length;
+  s.saveTemplate({ name: 'B' });
+  assert.equal(s.getDoc().templates.length, n);
+});
+
+test('store: rot on startSession / addPastSession', async () => {
+  const s = await freshStore(memStorage());
+  const item = { ex: 'lib_panca_piana', rest: 90, sets: [{ reps: [8, 10], kg: 60 }] };
+  const a = s.saveTemplate({ name: 'A', items: [item] });
+  const b = s.saveTemplate({ name: 'B', items: [item] });
+  const today = todayKey();
+  const pid = s.saveProgram({ name: 'Rot', kind: 'rotation', seq: [a, b], days: [0, 1, 2, 3, 4, 5, 6] });
+  s.activateProgram(pid, addDays(today, -30));
+  const rotOf = (id) => s.getDoc().sessions.find((x) => x.id === id).rot;
+  const s1 = s.startSession({ tpl: a });
+  assert.deepEqual(rotOf(s1), { p: pid, i: 0 });
+  s.finishSession(s1);
+  const s2 = s.startSession({ tpl: a });                       // next is now b
+  assert.equal(rotOf(s2), null);
+  const s3 = s.startSession({ tpl: b });
+  assert.deepEqual(rotOf(s3), { p: pid, i: 1 });
+  s.discardSession(s2);
+  s.discardSession(s3);
+  assert.deepEqual(rotOf(s.addPastSession({ date: addDays(today, -2), tpl: b })), { p: pid, i: 1 });
+  assert.equal(rotOf(s.addPastSession({ date: addDays(today, -2), tpl: a })), null);
+  assert.equal(rotOf(s.addPastSession({ date: addDays(today, -60), tpl: b })), null);   // before activation
+});
+
+test('store: finishSession ignores ended sessions; exercise names are trimmed to 40', async () => {
+  const s = await freshStore(memStorage());
+  const sid = s.startSession({});
+  s.finishSession(sid, { rpe: 5 });
+  const end = s.getDoc().sessions[0].end;
+  s.finishSession(sid, { rpe: 9 });
+  assert.equal(s.getDoc().sessions[0].rpe, 5);
+  assert.equal(s.getDoc().sessions[0].end, end);
+  const x = s.saveExercise({ name: `  ${'n'.repeat(60)}  ` });
+  assert.equal(s.getDoc().exercises.find((e) => e.id === x).name.length, 40);
+});
+
+test('store: concluded program activates as a copy; endProgram future vs active', async () => {
+  const s = await freshStore(memStorage());
+  const today = todayKey();
+  const old = s.saveProgram({ name: 'Old', kind: 'free' });
+  s.activateProgram(old, addDays(today, -20), addDays(today, -10));
+  const used = s.activateProgram(old, today);
+  assert.notEqual(used, old);
+  assert.equal(s.getDoc().programs.find((p) => p.id === old).to, addDays(today, -10));
+  assert.equal(s.getDoc().programs.find((p) => p.id === used).from, today);
+  const fut = s.saveProgram({ name: 'Fut', kind: 'free' });
+  s.activateProgram(fut, addDays(today, 5));
+  s.endProgram(fut);
+  const f = s.getDoc().programs.find((p) => p.id === fut);
+  assert.deepEqual([f.from, f.to], [null, null]);
+  s.endProgram(used);
+  assert.equal(s.getDoc().programs.find((p) => p.id === used).to, addDays(today, -1));
 });

@@ -7,6 +7,7 @@ let tick = 0;
 let ctx = null;
 let lock = null;
 let wantLock = false;
+let locking = false;
 
 export function restState() {
   const remaining = running ? Math.max(0, Math.ceil((until - Date.now()) / 1000)) : 0;
@@ -74,7 +75,13 @@ export function unlockAudio() {
 /** Two short 880 Hz beeps; silent when audio is locked or unavailable. */
 export function beep() {
   try {
-    if (!ctx || ctx.state !== 'running') return;
+    if (!ctx) return;
+    if (ctx.state !== 'running') ctx.resume()?.then(play, () => {}); else play();
+  } catch { /* ignore */ }
+}
+
+function play() {
+  try {
     for (const at of [0, 0.25]) {
       const t = ctx.currentTime + at;
       const osc = ctx.createOscillator();
@@ -93,10 +100,16 @@ export function beep() {
 
 async function requestLock() {
   try {
-    if (!wantLock || lock || !navigator.wakeLock || document.visibilityState !== 'visible') return;
-    lock = await navigator.wakeLock.request('screen');
-    lock.addEventListener('release', () => { lock = null; });
-  } catch { lock = null; }          // refused or unavailable: ignore
+    if (!wantLock || lock || locking || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+    locking = true;
+    const l = await navigator.wakeLock.request('screen');
+    if (!wantLock) {                  // keepAwake(false) arrived meanwhile
+      l.release().catch(() => {});
+      return;
+    }
+    lock = l;
+    l.addEventListener('release', () => { if (lock === l) lock = null; });
+  } catch { /* refused or unavailable: ignore */ } finally { locking = false; }
 }
 
 /** Keep the screen on while on; re-requested when the app returns to the foreground. */

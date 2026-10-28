@@ -1,11 +1,12 @@
 // SVG chart builders (return markup strings) and a shared hover/tap tooltip.
 // Marks: 2px lines, 8px dots, 4px rounded bar tops on the baseline, 2px gaps; text uses text tokens only.
 import { addDays, weekStart, fromKey } from './logic.js';
-import { esc, fmtFull, fmtNum, pct, MONTHS, DAY_SHORT } from './ui.js';
+import { esc, safeColor, fmtFull, fmtNum, pct, MONTHS, DAY_SHORT } from './ui.js';
 
 // ---- Progress ring -----------------------------------------------------
 
 export function ring(f, color, size = 46, stroke = 5) {
+  color = safeColor(color);
   const c = size / 2;
   const r = (size - stroke) / 2;
   const len = 2 * Math.PI * r;
@@ -32,6 +33,7 @@ function cellStyle(v, color) {
 /** valueAt(key) gives null (not applicable) or 0..1. Last 53 weeks ending with today's week.
  *  tipFor(key, v) optionally replaces the default "date · %" tooltip text. */
 export function heatmap(valueAt, color, today, tipFor = null) {
+  color = safeColor(color);
   const cell = 12;
   const step = cell + 3;
   const top = 18;
@@ -91,6 +93,7 @@ function slots(n) {
 /** points: [{ label, tip, value: null | 0..1 }]; one slot per point, so the axis is always complete.
  *  shade: colour each dot with the heatmap scale (same steps as "Meno → Più"). */
 export function lineChart(points, color, ariaLabel, { shade = false } = {}) {
+  color = safeColor(color);
   const { W, H, L, R, T } = FRAME;
   const ih = H - T - FRAME.B;
   const { x } = slots(points.length);
@@ -122,6 +125,7 @@ export function lineChart(points, color, ariaLabel, { shade = false } = {}) {
 /** points: [{ label, tip, value: null | number }]; y axis auto-scaled with 3 labels. overlay (optional): thin
  *  dashed line [{ value }] on the same scale (moving average). */
 export function valueLine(points, color, ariaLabel, { unit = '', overlay = null } = {}) {
+  color = safeColor(color);
   const { W, H, L, R, T, B } = FRAME;
   const ih = H - T - B;
   const { x } = slots(points.length);
@@ -165,6 +169,7 @@ export function valueLine(points, color, ariaLabel, { unit = '', overlay = null 
 
 /** points: [{ label, tip, value }]; with a target, bars below it are lighter and it is a dashed line. */
 export function barChart(points, target, color, unit, ariaLabel) {
+  color = safeColor(color);
   const { W, H, L, R, T, B } = FRAME;
   const iw = W - L - R;
   const ih = H - T - B;
@@ -205,7 +210,7 @@ export function stackedBars(series, keys, colors, { ariaLabel = 'Grafico a barre
   const { W, H, L, R, T, B } = FRAME;
   const iw = W - L - R;
   const ih = H - T - B;
-  const colorOf = (k, i) => (Array.isArray(colors) ? colors[i] : colors[k]);
+  const colorOf = (k, i) => safeColor(Array.isArray(colors) ? colors[i] : colors[k]);
   const totals = series.map((s) => keys.reduce((a, k) => a + Math.max(0, s.values?.[k] ?? 0), 0));
   const max = (Math.max(0, ...totals) || 1) * 1.1;
   const y = (v) => T + ih * (1 - v / max);
