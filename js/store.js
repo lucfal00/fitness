@@ -6,6 +6,7 @@ import {
 import { validateDoc, mergeDocs } from './merge.js';
 import { suggestSets } from './metrics.js';
 import { SyncError, connect, syncOnce } from './sync.js';
+import { safeColor } from './ui.js';
 
 const KEY = 'fitness.v1';
 const SYNC_KEY = 'fitness.sync';
@@ -21,24 +22,41 @@ let syncing = false;
 let syncAgain = false;
 
 /** Wrap every live template that is not part of a scheda in a one-day scheda (idempotent). True when anything changed.
- *  The scheda id derives from the template id, so devices migrating the same data converge on the same program. */
+ *  The scheda id derives from the template id, so devices migrating the same data converge on the same program; when
+ *  that program already holds the template it is re-attached. updatedAt values are never bumped (the new program
+ *  inherits the template's), so a migration cannot win a merge over a real edit. */
 function migrateSchede(d) {
-  const t = Date.now();
   let changed = false;
   for (const tpl of d.templates) {
     if (tpl.deleted || tpl.scheda) continue;
     let id = `p_${String(tpl.id).replace(/^t_/, '')}`;
-    if (d.programs.some((p) => p.id === id)) id = newId('p_');
+    const same = d.programs.find((p) => p.id === id);
+    if (same?.seq?.includes(tpl.id)) {
+      tpl.scheda = id;
+      if (!tpl.dayName) tpl.dayName = 'Giorno 1';
+      changed = true;
+      continue;
+    }
+    if (same) id = newId('p_');
     d.programs.push({
       id, name: String(tpl.name ?? '').trim().slice(0, 40) || 'Scheda', kind: 'rotation', emoji: tpl.emoji ?? '💪',
-      color: tpl.color ?? '#2f8f4a', perWeek: 1, days: null, weeks: [], seq: [tpl.id], from: null, to: null, deleted: false, updatedAt: t,
+      color: tpl.color ?? '#2f8f4a', perWeek: 1, days: null, weeks: [], seq: [tpl.id], from: null, to: null, deleted: false,
+      updatedAt: tpl.updatedAt ?? 0,
     });
     tpl.scheda = id;
     tpl.dayName = 'Giorno 1';
-    tpl.updatedAt = t;
     changed = true;
   }
   return changed;
+}
+
+/** migrateSchede on the live document; malformed elements leave it as it is. */
+function migrate() {
+  try {
+    return migrateSchede(doc);
+  } catch {
+    return false;
+  }
 }
 
 export function load() {
@@ -74,9 +92,7 @@ export function load() {
     }
   }
   if (!migrated) return;
-  try {
-    if (migrateSchede(doc)) save('migrate');      // saved only when something changed
-  } catch { /* malformed elements: leave the document as loaded */ }
+  if (migrate()) save('migrate');                 // saved only when something changed
 }
 
 export const getDoc = () => doc;
@@ -249,7 +265,25 @@ export function saveProgram(p) {
   return id;
 }
 
-/** Activate from `from` (to optional). A concluded program is activated as a copy (history stays). Returns the id used. */
+/** Copy of a scheda's live days for program `target`: new ids, same name/items/look, seq remapped in order. */
+function cloneSchedaDays(p, target) {
+  const copies = new Map();
+  for (const tid of p.seq) {
+    const t = find(doc.templates, tid);
+    if (!t || t.deleted || copies.has(tid)) continue;
+    const dayName = t.dayName ?? t.name;
+    const copy = {
+      ...clone(t), id: newId('t_'), scheda: target.id, dayName, name: dayLabel(target, dayName),
+      order: nextOrder(doc.templates), deleted: false, updatedAt: target.updatedAt,
+    };
+    doc.templates.push(copy);
+    copies.set(tid, copy.id);
+  }
+  target.seq = p.seq.filter((tid) => copies.has(tid)).map((tid) => copies.get(tid));
+}
+
+/** Activate from `from` (to optional). A concluded program is activated as a copy (history stays); a concluded scheda
+ *  copy gets its own days, so each day belongs to exactly one scheda. Returns the id used. */
 export function activateProgram(id, from, to = null) {
   if (readOnly) return null;
   const p = find(doc.programs, id);
@@ -258,6 +292,7 @@ export function activateProgram(id, from, to = null) {
   if (p.to != null && p.to < todayKey()) {
     target = { ...clone(p), id: newId('p_'), from: null, to: null, deleted: false, updatedAt: now() };
     doc.programs.push(target);
+    if (p.kind === 'rotation' && p.perWeek > 0) cloneSchedaDays(p, target);
   }
   const t = now();
   for (const patch of activationPatches(doc, target.id, from, to)) {
@@ -300,31 +335,49 @@ export function deleteProgram(id) {
 
 const cleanText = (v, max = 40) => String(v ?? '').trim().slice(0, max);
 const liveScheda = (id) => doc.programs.find((p) => p.id === id && !p.deleted && p.kind === 'rotation') ?? null;
-const dayLabel = (p, dayName) => `${p.name} · ${dayName}`.slice(0, 40);
+/** "Scheda · Giorno" within 60 characters: the scheda part is cut first, the day name stays whole. */
+function dayLabel(p, dayName) {
+  const tail = ` · ${dayName}`;
+  return p.name.slice(0, Math.max(0, 60 - tail.length)) + tail;
+}
+
+/** First "Giorno n" not used by a live day of the scheda. */
+function freeDayName(p) {
+  const used = new Set(doc.templates.filter((t) => t.scheda === p.id && !t.deleted).map((t) => t.dayName));
+  let n = 1;
+  while (used.has(`Giorno ${n}`)) n++;
+  return `Giorno ${n}`;
+}
 
 function normDays(v) {
   const out = [...new Set((Array.isArray(v) ? v : []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 7))];
   return out.length ? out.sort((a, b) => a - b) : null;
 }
 
-/** Create (no id) or update a scheda: name, emoji, color, perWeek (1–7), days (preferred weekdays or null). Returns the id. */
+/** Create (no id) or update a scheda: name, emoji, color (#rrggbb), perWeek (1–7), days (preferred weekdays or null).
+ *  Returns the id; an id that is deleted or not a rotation scheda changes nothing and returns null. */
 export function saveScheda(f) {
   if (readOnly) return null;
   const fields = {};
   if ('name' in f) fields.name = cleanText(f.name) || 'Scheda';
   if ('emoji' in f) fields.emoji = f.emoji;
-  if ('color' in f) fields.color = f.color;
+  if ('color' in f) fields.color = safeColor(f.color);
   if ('perWeek' in f) fields.perWeek = Math.min(7, Math.max(1, Math.round(Number(f.perWeek)) || 1));
   if ('days' in f) fields.days = normDays(f.days);
-  const cur = f.id ? find(doc.programs, f.id) : null;
-  if (cur) {
+  if (f.id) {
+    const cur = liveScheda(f.id);
+    if (!cur) return null;
+    const look = ({ name, emoji, color }) => [name, emoji, color].join('\n');
+    const before = look(cur);
     Object.assign(cur, fields, { updatedAt: now() });
-    for (const t of doc.templates) {               // days follow the scheda's look and name
-      if (t.scheda !== cur.id || t.deleted) continue;
-      t.emoji = cur.emoji;
-      t.color = cur.color;
-      t.name = dayLabel(cur, t.dayName ?? '');
-      t.updatedAt = cur.updatedAt;
+    if (look(cur) !== before) {                    // days follow the scheda's name and look, only when they changed
+      for (const t of doc.templates) {
+        if (t.scheda !== cur.id || t.deleted) continue;
+        t.emoji = cur.emoji;
+        t.color = cur.color;
+        t.name = dayLabel(cur, t.dayName ?? '');
+        t.updatedAt = cur.updatedAt;
+      }
     }
     save('program', cur.id);
     return cur.id;
@@ -343,7 +396,7 @@ export function addSchedaDay(schedaId, { dayName, items = [] } = {}) {
   if (readOnly) return null;
   const p = liveScheda(schedaId);
   if (!p) return null;
-  const name = cleanText(dayName) || `Giorno ${p.seq.length + 1}`;
+  const name = cleanText(dayName) || freeDayName(p);
   const id = newId('t_');
   const t = now();
   doc.templates.push({
@@ -371,7 +424,7 @@ export function saveSchedaDay(tplId, { dayName, items } = {}) {
 
 /** Swap the day with its neighbour in the scheda's order (dir = -1 up, +1 down). */
 export function moveSchedaDay(tplId, dir) {
-  if (readOnly) return;
+  if (readOnly || (dir !== 1 && dir !== -1)) return;
   const p = find(doc.programs, find(doc.templates, tplId)?.scheda);
   if (!p) return;
   const i = p.seq.indexOf(tplId);
@@ -642,6 +695,7 @@ export async function importBackup(file) {
     throw new Error('Backup non valido.');
   }
   doc = r.doc;
+  migrate();
   save('import');
   return { count: r.count };
 }
@@ -672,7 +726,9 @@ function adopt(merged) {
   }
   if (r.count) {
     doc = r.doc;
+    const migrated = migrate();
     persist('sync');
+    if (migrated) scheduleSync();                 // the new schede reach the other devices
   }
 }
 

@@ -125,11 +125,20 @@ function lastRotationSession(doc, id, date = null) {
   return last;
 }
 
-/** Next rotation position in seq: first usable one after the last session's index, else 0. */
+/** Position in seq of a rotation session's day: its template where it still is (rot.i if it holds it, else the first
+ *  occurrence), falling back to the recorded rot.i when the day left the rotation. Reorders/edits do not skew "next". */
+function rotationPosition(program, session) {
+  const { seq } = program;
+  const at = seq.indexOf(session.tpl);
+  if (at < 0) return session.rot.i;
+  return seq[session.rot.i] === session.tpl ? session.rot.i : at;
+}
+
+/** Next rotation position in seq: first usable one after the last session's day, else 0. */
 export function nextRotationIndex(doc, program) {
   const len = program.seq.length;
   const last = lastRotationSession(doc, program.id);
-  const start = last && len ? (last.rot.i + 1) % len : 0;
+  const start = last && len ? (rotationPosition(program, last) + 1) % len : 0;
   const pos = usablePositions(doc, program.seq, start);
   return pos.length ? pos[0] : start;
 }
@@ -142,7 +151,7 @@ function plannedRotation(doc, p, d, today) {
   const done = lastRotationSession(doc, p.id, today);
   if (done) {
     if (d === today) {
-      const pos = usablePositions(doc, p.seq, done.rot.i);
+      const pos = usablePositions(doc, p.seq, rotationPosition(p, done));
       return pos.length ? { items: [p.seq[pos[0]]], count: 1 } : { items: [], count: 0 };
     }
     start = addDays(today, 1);
@@ -214,10 +223,13 @@ function weekOwner(doc, w) {
   return null;
 }
 
+/** Concluded sessions dated lo..hi. */
+const countBetween = (doc, lo, hi) => concluded(doc).filter((s) => s.date >= lo && s.date <= hi).length;
+
 /** Concluded sessions of the week starting w, up to today. */
 function weekDone(doc, w, today) {
   const end = addDays(w, 6);
-  return concluded(doc).filter((s) => s.date >= w && s.date <= end && s.date <= today).length;
+  return countBetween(doc, w, end < today ? end : today);
 }
 
 /** { done, target } of the Monday–Sunday week containing today; target = perWeek of the active scheda, else null. */
@@ -230,6 +242,7 @@ export function weekProgress(doc, today) {
  *  Days of a scheda without preferred days are replaced by weekly scoring (§3). */
 export function adherence(doc, from, to, today) {
   const end = to < today ? to : today;
+  if (from > end) return null;                    // range entirely in the future
   let prev = 0;
   let ok = 0;
   for (const d of days(from, end)) {
@@ -242,7 +255,9 @@ export function adherence(doc, from, to, today) {
   for (let w = weekStart(from); w <= end; w = addDays(w, 7)) {
     const p = weekOwner(doc, w);
     if (!weekly(p)) continue;
-    const done = weekDone(doc, w, today);
+    const lo = [w, from, p.from].reduce((a, b) => (a > b ? a : b));     // only sessions inside the range and since activation
+    const hi = [addDays(w, 6), end].reduce((a, b) => (a < b ? a : b));
+    const done = countBetween(doc, lo, hi);
     ok += Math.min(done, p.perWeek);
     prev += w === thisWeek ? Math.min(done, p.perWeek) : p.perWeek;   // the running week is never missed
   }

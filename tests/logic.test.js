@@ -359,7 +359,8 @@ test('rotation: a skipped day does not consume a position', () => {
   const doc = docWith({ programs: [p], sessions: [g1] });
   assert.equal(L.nextRotationIndex(doc, p), 1);
   assert.deepEqual(L.planned(doc, '2026-11-05', '2026-11-05'), { items: [], count: 0 });   // no per-date plan without days
-  assert.equal(L.nextRotationIndex(doc, p), 1);                                               // day 2 skipped: still day 2
+  const free = docWith({ programs: [p], sessions: [g1, sess('2026-11-05', 'C')] });         // day 2 skipped for a free workout
+  assert.equal(L.nextRotationIndex(free, p), 1);                                              // still day 2
   const g2 = sess('2026-11-06', 'B', { rot: { p: 'S', i: 1 } });
   assert.equal(L.nextRotationIndex(docWith({ programs: [p], sessions: [g1, g2] }), p), 2);
 });
@@ -378,4 +379,47 @@ test('schedaOf and workoutLabel', () => {
   assert.equal(L.workoutLabel(doc, 'nope'), 'Allenamento libero');
   p.deleted = true;                                                                           // history keeps the name
   assert.equal(L.workoutLabel(doc, 'A'), 'Forza · Petto');
+});
+
+test('nextRotationIndex follows the last day by template, not by stale position', () => {
+  const afterB = (seq) => {
+    const p = scheda({ seq });
+    return { p, doc: docWith({ programs: [p], sessions: [sess('2026-11-04', 'B', { rot: { p: 'S', i: 1 } })] }) };
+  };
+  let { p, doc } = afterB(['A', 'B', 'C']);
+  assert.equal(L.nextRotationIndex(doc, p), 2);
+  ({ p, doc } = afterB(['A', 'A2', 'B', 'C']));                 // A duplicated before B: B moved to 2
+  assert.equal(L.nextRotationIndex(doc, p), 3);
+  ({ p, doc } = afterB(['B', 'A', 'C']));                       // days moved: B is first
+  assert.equal(L.nextRotationIndex(doc, p), 1);
+  ({ p, doc } = afterB(['B', 'C']));                            // earlier day deleted
+  assert.equal(L.nextRotationIndex(doc, p), 1);
+  ({ p, doc } = afterB(['A', 'B', 'C', 'B']));                  // twice: rot.i holds B
+  assert.equal(L.nextRotationIndex(doc, p), 2);
+  ({ p, doc } = afterB(['B', 'C', 'A', 'B']));                  // twice, rot.i no longer B: first occurrence
+  assert.equal(L.nextRotationIndex(doc, p), 1);
+  ({ p, doc } = afterB(['A', 'C']));                            // B left the rotation: recorded position
+  assert.equal(L.nextRotationIndex(doc, p), 0);
+  // planned today after the session follows the same position
+  const q = scheda({ seq: ['A', 'A2', 'B', 'C'], days: [1, 2, 3, 4, 5, 6, 7] });
+  const d2 = docWith({ programs: [q], sessions: [sess('2026-11-04', 'B', { rot: { p: 'S', i: 1 } })] });
+  assert.deepEqual(L.planned(d2, '2026-11-04', '2026-11-04').items, ['B']);
+  assert.deepEqual(L.planned(d2, '2026-11-05', '2026-11-04').items, ['C']);
+});
+
+test('adherence: weekly sessions are clamped to the range and to the activation', () => {
+  const p = scheda({ from: '2026-11-04' });
+  const doc = docWith({ programs: [p], sessions: [sess('2026-11-02', 'A'), sess('2026-11-05', 'A'), sess('2026-11-07', 'A')] });
+  // activation on Wed: the Monday session is not counted
+  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-08', '2026-11-09'), 2 / 3);
+  // range Fri..Sun: only the Saturday session
+  assert.equal(L.adherence(doc, '2026-11-06', '2026-11-08', '2026-11-09'), 1 / 3);
+  // range ends before the later sessions
+  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-05', '2026-11-09'), 1 / 3);
+  // sessions after today are not counted (data in the future)
+  const future = docWith({ programs: [p], sessions: [sess('2026-11-05', 'A'), sess('2026-11-07', 'A')] });
+  assert.equal(L.adherence(future, '2026-11-02', '2026-11-08', '2026-11-06'), 1);
+  // range entirely in the future
+  assert.equal(L.adherence(future, '2026-11-16', '2026-11-22', '2026-11-10'), null);
+  assert.equal(L.adherence(future, '2026-11-07', '2026-11-08', '2026-11-06'), null);
 });
