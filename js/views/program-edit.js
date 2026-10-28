@@ -35,13 +35,17 @@ function fromProgram(p) {
   });
   return {
     key: p.id, id: p.id, name: p.name, kind: p.kind, n: Math.min(MAX_WEEKS, Math.max(1, (p.weeks ?? []).length || 1)),
-    weeks, seq: [...(p.seq ?? [])], days: [...(p.days ?? [])],
+    weeks, seq: [...(p.seq ?? [])], days: [...(p.days ?? [])], updatedAt: p.updatedAt ?? null, dirty: false,
   };
 }
 
 const blank = () => ({
-  key: 'nuovo', id: null, name: '', kind: 'week', n: 1, weeks: emptyWeeks(), seq: [], days: [],
+  key: 'nuovo', id: null, name: '', kind: 'week', n: 1, weeks: emptyWeeks(), seq: [], days: [], updatedAt: null, dirty: false,
 });
+
+/** True when the draft edits a program that was deleted (or vanished) since the draft was made. */
+const gone = (d) => !!d.id && !getDoc().programs.some((x) => x.id === d.id && !x.deleted);
+const GONE_MSG = 'Questo programma è stato eliminato su un altro dispositivo.';
 
 /** Only the fields that matter for the chosen kind; the others are saved empty. */
 function buildFields(d) {
@@ -129,6 +133,7 @@ function openActivate(ro) {
     if (!b) return;
     if (b.dataset.act === 'cancel') { close(); return; }
     if (b.dataset.act !== 'go' || !draft || validate(draft).length) return;
+    if (gone(draft)) { err(GONE_MSG); return; }
     const from = box.querySelector('[name=from]').value;
     const to = box.querySelector('[name=to]').value || null;
     if (!isDate(from)) { err('Scegli una data di inizio valida.'); return; }
@@ -158,15 +163,23 @@ export function render(el, ctx) {
     return;
   }
   if (!draft || draft.key !== param) draft = p ? fromProgram(p) : blank();
+  let stale = false;
+  if (p && draft.updatedAt !== (p.updatedAt ?? null)) {         // stored program changed while the form is open
+    if (draft.dirty) stale = true;
+    else draft = fromProgram(p);
+  }
   const d = draft;
   const ro = isReadOnly();
-  const rerender = () => render(el, ctx);
+  const rerender = () => (ctx.refresh ? ctx.refresh() : render(el, { ...ctx, doc: getDoc() }));
   const info = p && p.from != null
-    ? `<p class="muted">Attivo dal ${fmtFull(p.from)}${p.to != null ? ` al ${fmtFull(p.to)}` : ''}</p>` : '';
+    ? `<p class="muted">Attivo dal ${esc(fmtFull(p.from))}${p.to != null ? ` al ${esc(fmtFull(p.to))}` : ''}</p>` : '';
+  const staleBox = stale ? `<div class="card form"><p class="error" role="alert">Questo programma è stato modificato su un altro dispositivo.</p>
+      <button type="button" class="btn" data-act="reload">Ricarica</button></div>` : '';
 
   el.innerHTML = `
     <header class="top"><a class="back" href="#calendario">‹ Calendario</a></header>
     <h1 style="margin-bottom:16px">${p ? 'Modifica programma' : 'Nuovo programma'}</h1>
+    ${staleBox}
     <div class="card form">
       ${info}
       <label class="field">Nome<input data-f="name" maxlength="40" value="${esc(d.name)}" placeholder="Es. Settimana A/B" autocomplete="off"></label>
@@ -202,13 +215,15 @@ export function render(el, ctx) {
   el.oninput = el.onchange = (e) => {
     const t = e.target;
     if (t.name === 'kind') {
-      if (t.checked) { d.kind = t.value; rerender(); }
+      if (t.checked) { d.kind = t.value; d.dirty = true; rerender(); }
     } else if (t.dataset.f === 'name') {
       d.name = t.value;
+      d.dirty = true;
       status();
     } else if (t.dataset.f === 'n') {
-      if (e.type === 'change') { d.n = +t.value; rerender(); }
+      if (e.type === 'change') { d.n = +t.value; d.dirty = true; rerender(); }
     } else if (t.dataset.day) {
+      d.dirty = true;
       const g = +t.dataset.day;
       d.days = t.checked ? [...new Set([...d.days, g])] : d.days.filter((x) => x !== g);
     }
@@ -219,28 +234,37 @@ export function render(el, ctx) {
     if (!b) return;
     const a = b.dataset.act;
     const i = +b.dataset.i;
+    if (a === 'reload') {
+      draft = p ? fromProgram(p) : blank();
+      rerender();
+      return;
+    }
     if (b.dataset.rm) {
+      d.dirty = true;
       const [w, g, k] = b.dataset.rm.split('.').map(Number);
       d.weeks[w][g].splice(k, 1);
     } else if (b.dataset.addcell) {
       const [w, g] = b.dataset.addcell.split('.').map(Number);
-      pickTemplate(`${DAY_NAMES[g]}, settimana ${w + 1}`, (id) => { d.weeks[w][g].push(id); rerender(); });
+      pickTemplate(`${DAY_NAMES[g]}, settimana ${w + 1}`, (id) => { d.weeks[w][g].push(id); d.dirty = true; rerender(); });
       return;
     } else if (a === 'addseq') {
-      pickTemplate('Aggiungi alla sequenza', (id) => { d.seq.push(id); rerender(); });
+      pickTemplate('Aggiungi alla sequenza', (id) => { d.seq.push(id); d.dirty = true; rerender(); });
       return;
-    } else if (a === 'del') d.seq.splice(i, 1);
+    } else if (a === 'del') { d.dirty = true; d.seq.splice(i, 1); }
     else if (a === 'up' || a === 'down') {
       const j = a === 'up' ? i - 1 : i + 1;
+      d.dirty = true;
       [d.seq[i], d.seq[j]] = [d.seq[j], d.seq[i]];
     } else if (a === 'save') {
       if (validate(d).length) return;
+      if (gone(d)) { errBox.innerHTML = `<p class="error">${GONE_MSG}</p>`; return; }
       const id = saveProgram(buildFields(d));
       if (id == null) return;
       draft = null;
       location.hash = '#calendario';
       return;
     } else if (a === 'activate') {
+      if (gone(d)) { errBox.innerHTML = `<p class="error">${GONE_MSG}</p>`; return; }
       if (!validate(d).length) openActivate(ro);
       return;
     } else if (a === 'delete') {

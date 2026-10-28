@@ -3,7 +3,7 @@ import {
   planned, isPlannedDone, addDays, addMonths, monthStart, monthEnd, weekStart, isConcluded, fromKey, toKey,
 } from '../logic.js';
 import {
-  getDoc, setPlan, movePlanned, addPastSession, endProgram, isReadOnly,
+  getDoc, onChange, setPlan, movePlanned, addPastSession, endProgram, isReadOnly,
 } from '../store.js';
 import {
   esc, safeColor, fmtDay, fmtFull, DAY_LETTERS, DAY_SHORT,
@@ -73,18 +73,31 @@ function monthGrid(doc, ms, today) {
 
 // ---- Day sheet ----------------------------------------------------------------
 
+// The open day sheet closes when sync/import replaces the data (its item indexes would be stale).
+let closeOpenDay = null;
+onChange((e) => {
+  if (closeOpenDay && (e.detail?.kind === 'sync' || e.detail?.kind === 'import')) closeOpenDay();
+});
+
 function openDay(d, today) {
+  closeOpenDay?.();
   let mode = { t: 'main' };
   let closed = false;
   const sheet = openSheet('');
   const { box } = sheet;
-  const onHash = () => { if (!closed) sheet.close(); };            // navigating away closes the sheet
   const close = () => {
+    if (closed) return;
     closed = true;
-    removeEventListener('hashchange', onHash);
-    sheet.close();
+    removeEventListener('hashchange', onHash);                      // eslint-disable-line no-use-before-define
+    if (closeOpenDay === close) closeOpenDay = null;
+    if (box.isConnected) sheet.close();                              // Escape/backdrop already removed it
   };
+  function onHash() {                                                // navigating away closes the sheet
+    removeEventListener('hashchange', onHash);
+    close();
+  }
   addEventListener('hashchange', onHash);
+  closeOpenDay = close;
 
   const back = '<button type="button" class="btn" data-act="back">Indietro</button>';
   const nameOf = (doc, id) => tplOf(doc, id)?.name ?? 'Scheda rimossa';
@@ -195,7 +208,7 @@ function openDay(d, today) {
 
 function period(p) {
   if (p.from == null) return 'Non attivato';
-  return p.to == null ? `dal ${fmtFull(p.from)}` : `dal ${fmtFull(p.from)} al ${fmtFull(p.to)}`;
+  return p.to == null ? `dal ${esc(fmtFull(p.from))}` : `dal ${esc(fmtFull(p.from))} al ${esc(fmtFull(p.to))}`;
 }
 
 function programCard(p, today, ro) {
