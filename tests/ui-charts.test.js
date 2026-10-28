@@ -207,7 +207,7 @@ test('store: saveScheda + addSchedaDay build template days in seq order', async 
   const ts = [a, b, c].map((id) => d.templates.find((t) => t.id === id));
   assert.deepEqual(ts.map((t) => t.scheda), [sid, sid, sid]);
   assert.deepEqual(ts.map((t) => t.dayName), ['Petto', 'Giorno 2', 'Gambe']);          // "Giorno <position>"
-  assert.deepEqual(ts.map((t) => t.name), ['Push Pull · Petto', 'Push Pull · Giorno 1', 'Push Pull · Gambe']);
+  assert.deepEqual(ts.map((t) => t.name), ['Push Pull · Petto', 'Push Pull · Giorno 2', 'Push Pull · Gambe']);
   assert.equal(ts[0].items.length, 1);
   assert.deepEqual(ts[1].items, []);
   assert.deepEqual([ts[0].emoji, ts[0].color], ['🏋️', '#112233']);
@@ -219,7 +219,7 @@ test('store: saveScheda + addSchedaDay build template days in seq order', async 
   assert.deepEqual([q.name, q.perWeek, q.days, q.seq, q.from], ['Nuova', 7, [1, 5], [a, b, c], '2026-11-02']);
   const ta = s.getDoc().templates.find((t) => t.id === a);
   assert.deepEqual([ta.color, ta.emoji, ta.name, ta.dayName], ['#445566', '🔥', 'Nuova · Petto', 'Petto']);
-  assert.equal(s.getDoc().templates.find((t) => t.id === b).name, 'Nuova · Giorno 1');
+  assert.equal(s.getDoc().templates.find((t) => t.id === b).name, 'Nuova · Giorno 2');
   s.saveScheda({ id: sid, name: 'Nuova', emoji: '🔥', color: '#445566', perWeek: 0, days: [] });
   const r = s.getDoc().programs.find((x) => x.id === sid);
   assert.deepEqual([r.perWeek, r.days], [1, null]);
