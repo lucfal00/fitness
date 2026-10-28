@@ -561,7 +561,7 @@ export async function runSync() {
     if (e instanceof SyncError && e.code === 'network') {
       setSync('offline', e.message);
     } else {
-      if (!readOnly) notice = `${SYNC_NOTICE} ${e.message || 'errore imprevisto.'}`;
+      if (!notice || notice.startsWith(SYNC_NOTICE)) notice = `${SYNC_NOTICE} ${e.message || 'errore imprevisto.'}`;
       setSync('error', e.message || 'Errore imprevisto.');
     }
   } finally {
