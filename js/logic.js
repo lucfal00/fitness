@@ -175,6 +175,22 @@ export function planned(doc, d, today = todayKey()) {
   return { items: [], count: 0 };
 }
 
+// ---- Schede ------------------------------------------------------------
+
+/** Scheda (program) a day template belongs to, also when deleted (history keeps its name); null if none. */
+export function schedaOf(doc, tplId) {
+  const sid = doc.templates.find((t) => t.id === tplId)?.scheda;
+  return (sid && doc.programs.find((p) => p.id === sid)) || null;
+}
+
+/** "Scheda · Giorno"; the template name when it is not part of a scheda; "Allenamento libero" without template. */
+export function workoutLabel(doc, tplId) {
+  const t = tplId == null ? null : doc.templates.find((x) => x.id === tplId);
+  if (!t) return 'Allenamento libero';
+  const p = schedaOf(doc, tplId);
+  return p ? `${p.name} · ${t.dayName ?? t.name}` : t.name;
+}
+
 // ---- Adherence and streaks ---------------------------------------------
 
 /** { prev, ok } for day d (≤ today); today is never counted as missed. */
@@ -186,14 +202,49 @@ function dayScore(doc, d, today) {
   return { prev, ok };
 }
 
-/** Σ ok / Σ prev over from..to (days ≤ today); null when nothing was planned. */
+/** Rotation scheda with a weekly target and no preferred days: scored per week, not per day (§3). */
+const weekly = (p) => p?.kind === 'rotation' && p.days == null && p.perWeek > 0;
+
+/** Program a week belongs to: the one active on its Monday, else the first active day of the week. */
+function weekOwner(doc, w) {
+  for (const d of days(w, addDays(w, 6))) {
+    const p = activeProgram(doc, d);
+    if (p) return p;
+  }
+  return null;
+}
+
+/** Concluded sessions of the week starting w, up to today. */
+function weekDone(doc, w, today) {
+  const end = addDays(w, 6);
+  return concluded(doc).filter((s) => s.date >= w && s.date <= end && s.date <= today).length;
+}
+
+/** { done, target } of the Monday–Sunday week containing today; target = perWeek of the active scheda, else null. */
+export function weekProgress(doc, today) {
+  const p = activeProgram(doc, today);
+  return { done: weekDone(doc, weekStart(today), today), target: p?.kind === 'rotation' ? p.perWeek ?? null : null };
+}
+
+/** Σ ok / Σ prev over from..to (days ≤ today); null when nothing was planned.
+ *  Days of a scheda without preferred days are replaced by weekly scoring (§3). */
 export function adherence(doc, from, to, today) {
+  const end = to < today ? to : today;
   let prev = 0;
   let ok = 0;
-  for (const d of days(from, to < today ? to : today)) {
+  for (const d of days(from, end)) {
+    if (weekly(activeProgram(doc, d))) continue;
     const s = dayScore(doc, d, today);
     prev += s.prev;
     ok += s.ok;
+  }
+  const thisWeek = weekStart(today);
+  for (let w = weekStart(from); w <= end; w = addDays(w, 7)) {
+    const p = weekOwner(doc, w);
+    if (!weekly(p)) continue;
+    const done = weekDone(doc, w, today);
+    ok += Math.min(done, p.perWeek);
+    prev += w === thisWeek ? Math.min(done, p.perWeek) : p.perWeek;   // the running week is never missed
   }
   return prev ? ok / prev : null;
 }
@@ -214,8 +265,11 @@ export function weekStreaks(doc, today) {
       const p = activeProgram(doc, d);
       if (p && plans(p)) planning = true;
     }
+    const owner = weekOwner(doc, w);
     let st;
-    if (planning) {
+    if (weekly(owner)) {
+      st = weekDone(doc, w, today) >= owner.perWeek ? 'c' : 'x';
+    } else if (planning) {
       let S = 0;
       let O = 0;
       for (const d of week) {

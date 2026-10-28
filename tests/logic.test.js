@@ -274,3 +274,108 @@ test('weekStreaks: rotation with days', () => {
   const doc = docWith({ programs: [p], sessions });
   assert.deepEqual(L.weekStreaks(doc, '2026-11-29'), { current: 1, best: 2 });
 });
+
+// ---- Schede: weekly target (rotation without preferred days) -------------
+
+const scheda = (o = {}) => rotation({
+  id: 'S', name: 'Push', perWeek: 3, days: null, seq: ['A', 'B', 'C'], from: '2026-11-02', emoji: '💪', color: '#2f8f4a', ...o,
+});
+// n sessions on the Mon, Tue, Thu... of the week starting `mon`
+const inWeek = (mon, n) => Array.from({ length: n }, (_, i) => sess(L.addDays(mon, [0, 1, 3, 4, 5, 6][i]), 'A'));
+
+test('weekProgress', () => {
+  const p = scheda();
+  const today = '2026-11-04';
+  assert.deepEqual(L.weekProgress(docWith({ programs: [p] }), today), { done: 0, target: 3 });
+  const two = docWith({ programs: [p], sessions: [...inWeek('2026-11-02', 2), sess('2026-10-30', 'B')] });
+  assert.deepEqual(L.weekProgress(two, today), { done: 2, target: 3 });
+  const over = docWith({ programs: [p], sessions: inWeek('2026-11-02', 4) });
+  assert.deepEqual(L.weekProgress(over, '2026-11-08'), { done: 4, target: 3 });
+  const open = docWith({ programs: [p], sessions: [sess('2026-11-02', 'A', { end: null }), sess('2026-11-03', 'A', { deleted: true })] });
+  assert.equal(L.weekProgress(open, today).done, 0);
+  const none = docWith({ programs: [], sessions: [sess('2026-11-03', 'A')] });
+  assert.deepEqual(L.weekProgress(none, today), { done: 1, target: null });
+  assert.equal(L.weekProgress(docWith({ programs: [p] }), '2026-10-28').target, null);   // before activation
+  assert.equal(L.weekProgress(docWith(), today).target, null);                              // week program: no weekly target
+});
+
+test('adherence: scheda without days is scored per week', () => {
+  const p = scheda();
+  const sessions = [...inWeek('2026-11-02', 3), ...inWeek('2026-11-09', 2), ...inWeek('2026-11-16', 1)];
+  const doc = docWith({ programs: [p], sessions });
+  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-22', '2026-11-23'), 6 / 9);
+  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-22', '2026-11-25'), 6 / 9);
+  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-22', '2026-11-22'), 6 / 7);   // Sunday: week 3 is still the running one
+  // running week is never missed: 1 session on Wed of the third week
+  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-22', '2026-11-18'), 6 / 7);
+  const first = docWith({ programs: [p], sessions: inWeek('2026-11-02', 1) });
+  assert.equal(L.adherence(first, '2026-11-02', '2026-11-08', '2026-11-04'), 1);
+  assert.equal(L.adherence(first, '2026-11-02', '2026-11-08', '2026-11-09'), 1 / 3);
+  // more sessions than the target do not exceed it
+  const over = docWith({ programs: [p], sessions: inWeek('2026-11-02', 5) });
+  assert.equal(L.adherence(over, '2026-11-02', '2026-11-08', '2026-11-08'), 1);
+});
+
+test('adherence: weeks before the activation are excluded; activation mid-week owns that week', () => {
+  const later = scheda({ from: '2026-11-09' });
+  const doc = docWith({ programs: [later], sessions: [...inWeek('2026-10-26', 3), ...inWeek('2026-11-09', 2)] });
+  assert.equal(L.adherence(doc, '2026-10-26', '2026-11-15', '2026-11-16'), 2 / 3);
+  assert.equal(L.adherence(doc, '2026-10-26', '2026-11-08', '2026-11-15'), null);
+  const mid = docWith({ programs: [scheda({ from: '2026-11-04' })], sessions: [sess('2026-11-05', 'A')] });
+  assert.equal(L.adherence(mid, '2026-11-02', '2026-11-08', '2026-11-09'), 1 / 3);
+});
+
+test('adherence: scheda change mid-period sums the contributions of each', () => {
+  const p1 = scheda({ id: 'P1', perWeek: 2, to: '2026-11-15' });
+  const p2 = scheda({ id: 'P2', perWeek: 3, from: '2026-11-16' });
+  const sessions = [...inWeek('2026-11-02', 2), ...inWeek('2026-11-09', 1), ...inWeek('2026-11-16', 3)];
+  const doc = docWith({ programs: [p1, p2], sessions });
+  assert.equal(L.adherence(doc, '2026-11-02', '2026-11-22', '2026-11-23'), 6 / 7);
+  // days-based program followed by a scheda without days: per-day then per-week
+  const wk = prog({ id: 'W', from: '2026-11-02', to: '2026-11-08', weeks: [[['A'], [], [], [], [], [], []]] });
+  const mix = docWith({ programs: [wk, scheda({ id: 'S2', from: '2026-11-09' })], sessions: [...inWeek('2026-11-09', 1)] });
+  assert.equal(L.adherence(mix, '2026-11-02', '2026-11-15', '2026-11-16'), 1 / 4);
+});
+
+test('weekStreaks: scheda without days, week complete when done >= perWeek', () => {
+  const p = scheda({ perWeek: 2 });
+  const sessions = [
+    ...inWeek('2026-11-02', 2), ...inWeek('2026-11-09', 1), ...inWeek('2026-11-16', 2), ...inWeek('2026-11-23', 3), ...inWeek('2026-11-30', 1),
+  ];
+  const doc = docWith({ programs: [p], sessions });
+  // c x c c, current week incomplete -> ignored
+  assert.deepEqual(L.weekStreaks(doc, '2026-12-02'), { current: 2, best: 2 });
+  // current week complete -> counted
+  const done = docWith({ programs: [p], sessions: [...sessions, sess('2026-12-01', 'B')] });
+  assert.deepEqual(L.weekStreaks(done, '2026-12-02'), { current: 3, best: 3 });
+  // a past incomplete week breaks the streak
+  const broken = docWith({ programs: [p], sessions: [...inWeek('2026-11-02', 2), ...inWeek('2026-11-09', 1)] });
+  assert.deepEqual(L.weekStreaks(broken, '2026-11-18'), { current: 0, best: 1 });
+});
+
+test('rotation: a skipped day does not consume a position', () => {
+  const p = scheda({ perWeek: 3 });
+  const g1 = sess('2026-11-02', 'A', { rot: { p: 'S', i: 0 } });
+  const doc = docWith({ programs: [p], sessions: [g1] });
+  assert.equal(L.nextRotationIndex(doc, p), 1);
+  assert.deepEqual(L.planned(doc, '2026-11-05', '2026-11-05'), { items: [], count: 0 });   // no per-date plan without days
+  assert.equal(L.nextRotationIndex(doc, p), 1);                                               // day 2 skipped: still day 2
+  const g2 = sess('2026-11-06', 'B', { rot: { p: 'S', i: 1 } });
+  assert.equal(L.nextRotationIndex(docWith({ programs: [p], sessions: [g1, g2] }), p), 2);
+});
+
+test('schedaOf and workoutLabel', () => {
+  const p = scheda({ name: 'Forza' });
+  const templates = [tpl('A', { scheda: 'S', dayName: 'Petto', name: 'Forza · Petto' }), tpl('X', { name: 'Libero sciolto' })];
+  const doc = docWith({ programs: [p], templates });
+  assert.equal(L.schedaOf(doc, 'A'), p);
+  assert.equal(L.schedaOf(doc, 'X'), null);
+  assert.equal(L.schedaOf(doc, 'nope'), null);
+  assert.equal(L.schedaOf(doc, null), null);
+  assert.equal(L.workoutLabel(doc, 'A'), 'Forza · Petto');
+  assert.equal(L.workoutLabel(doc, 'X'), 'Libero sciolto');
+  assert.equal(L.workoutLabel(doc, null), 'Allenamento libero');
+  assert.equal(L.workoutLabel(doc, 'nope'), 'Allenamento libero');
+  p.deleted = true;                                                                           // history keeps the name
+  assert.equal(L.workoutLabel(doc, 'A'), 'Forza · Petto');
+});

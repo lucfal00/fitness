@@ -5,7 +5,7 @@ import { fmtKg, fmtDuration, esc, safeColor } from '../js/ui.js';
 import { stackedBars } from '../js/charts.js';
 import { bodyMap } from '../js/bodymap.js';
 import { GROUPS } from '../js/library.js';
-import { todayKey, addDays } from '../js/logic.js';
+import { todayKey, addDays, emptyDoc } from '../js/logic.js';
 
 test('ui formatting', () => {
   assert.equal(fmtKg(62.5), '62,5');
@@ -187,6 +187,121 @@ test('store: concluded program activates as a copy; endProgram future vs active'
   assert.deepEqual([f.from, f.to], [null, null]);
   s.endProgram(used);
   assert.equal(s.getDoc().programs.find((p) => p.id === used).to, addDays(today, -1));
+});
+
+// ---- Schede ----------------------------------------------------------------
+
+test('store: saveScheda + addSchedaDay build template days in seq order', async () => {
+  const s = await freshStore(memStorage());
+  const sid = s.saveScheda({ name: '  Push Pull  ', emoji: '🏋️', color: '#112233', perWeek: 3, days: null });
+  const p = s.getDoc().programs.find((x) => x.id === sid);
+  assert.deepEqual([p.kind, p.name, p.emoji, p.color, p.perWeek, p.days, p.from, p.to], ['rotation', 'Push Pull', '🏋️', '#112233', 3, null, null, null]);
+  assert.deepEqual(p.seq, []);
+  const item = { ex: 'lib_panca_piana', rest: 90, sets: [{ reps: [8, 10], kg: 60 }] };
+  const a = s.addSchedaDay(sid, { dayName: 'Petto', items: [item] });
+  const b = s.addSchedaDay(sid);
+  const c = s.addSchedaDay(sid, { dayName: 'Gambe' });
+  const d = s.getDoc();
+  assert.deepEqual(d.programs.find((x) => x.id === sid).seq, [a, b, c]);
+  const ts = [a, b, c].map((id) => d.templates.find((t) => t.id === id));
+  assert.deepEqual(ts.map((t) => t.scheda), [sid, sid, sid]);
+  assert.deepEqual(ts.map((t) => t.dayName), ['Petto', 'Giorno 2', 'Gambe']);
+  assert.equal(ts[0].items.length, 1);
+  assert.deepEqual(ts[1].items, []);
+  assert.deepEqual([ts[0].emoji, ts[0].color], ['🏋️', '#112233']);
+  assert.equal(s.addSchedaDay('nope'), null);
+  // update keeps seq / activation; perWeek is clamped, days normalised
+  s.activateProgram(sid, '2026-11-02');
+  s.saveScheda({ id: sid, name: 'Nuova', emoji: '🔥', color: '#445566', perWeek: 99, days: [5, 1, 1, 9] });
+  const q = s.getDoc().programs.find((x) => x.id === sid);
+  assert.deepEqual([q.name, q.perWeek, q.days, q.seq, q.from], ['Nuova', 7, [1, 5], [a, b, c], '2026-11-02']);
+  assert.equal(s.getDoc().templates.find((t) => t.id === a).color, '#445566');
+  s.saveScheda({ id: sid, name: 'Nuova', emoji: '🔥', color: '#445566', perWeek: 0, days: [] });
+  const r = s.getDoc().programs.find((x) => x.id === sid);
+  assert.deepEqual([r.perWeek, r.days], [1, null]);
+});
+
+test('store: saveSchedaDay, moveSchedaDay, duplicateSchedaDay', async () => {
+  const s = await freshStore(memStorage());
+  const sid = s.saveScheda({ name: 'S', emoji: '💪', color: '#2f8f4a', perWeek: 3, days: null });
+  const [a, b, c] = ['A', 'B', 'C'].map((n) => s.addSchedaDay(sid, { dayName: n }));
+  const seq = () => s.getDoc().programs.find((x) => x.id === sid).seq;
+  s.saveSchedaDay(b, { dayName: '  Dorso  ', items: [{ ex: 'lib_panca_piana', sets: [{ reps: [5, 5] }] }] });
+  const tb = s.getDoc().templates.find((t) => t.id === b);
+  assert.deepEqual([tb.dayName, tb.items.length], ['Dorso', 1]);
+  s.moveSchedaDay(c, -1);
+  assert.deepEqual(seq(), [a, c, b]);
+  s.moveSchedaDay(a, -1);                       // already first
+  s.moveSchedaDay(b, +1);                       // already last
+  assert.deepEqual(seq(), [a, c, b]);
+  s.moveSchedaDay(a, +1);
+  assert.deepEqual(seq(), [c, a, b]);
+  const copy = s.duplicateSchedaDay(a);
+  assert.deepEqual(seq(), [c, a, copy, b]);
+  const tc = s.getDoc().templates.find((t) => t.id === copy);
+  assert.deepEqual([tc.scheda, tc.dayName, tc.deleted], [sid, 'A (copia)', false]);
+  assert.notEqual(tc.id, a);
+});
+
+test('store: deleteSchedaDay leaves seq (soft delete), also the last day; deleteScheda soft-deletes scheda and days', async () => {
+  const s = await freshStore(memStorage());
+  const sid = s.saveScheda({ name: 'S', emoji: '💪', color: '#2f8f4a', perWeek: 2, days: null });
+  const [a, b] = [s.addSchedaDay(sid), s.addSchedaDay(sid)];
+  const seq = () => s.getDoc().programs.find((x) => x.id === sid).seq;
+  s.deleteSchedaDay(a);
+  assert.deepEqual(seq(), [b]);
+  assert.equal(s.getDoc().templates.find((t) => t.id === a).deleted, true);
+  s.deleteSchedaDay(b);
+  assert.deepEqual(seq(), []);
+  const c = s.addSchedaDay(sid);
+  const other = s.saveScheda({ name: 'O', emoji: '💪', color: '#2f8f4a', perWeek: 1, days: null });
+  const o = s.addSchedaDay(other);
+  s.deleteScheda(sid);
+  const d = s.getDoc();
+  assert.equal(d.programs.find((x) => x.id === sid).deleted, true);
+  assert.equal(d.templates.find((t) => t.id === c).deleted, true);
+  assert.equal(d.programs.find((x) => x.id === other).deleted, false);
+  assert.equal(d.templates.find((t) => t.id === o).deleted, false);
+});
+
+test('store: scheda mutators are no-ops when read-only', async () => {
+  const s = await freshStore({ getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); } });
+  assert.equal(s.saveScheda({ name: 'X', perWeek: 1, days: null }), null);
+  assert.equal(s.addSchedaDay('p'), null);
+  assert.equal(s.duplicateSchedaDay('t'), null);
+  s.saveSchedaDay('t', { dayName: 'x' });
+  s.moveSchedaDay('t', 1);
+  s.deleteSchedaDay('t');
+  s.deleteScheda('p');
+  assert.deepEqual(s.getDoc().programs, []);
+});
+
+test('store: migration wraps loose templates in 1-day schede, is idempotent and saves only on change', async () => {
+  const mem = new Map();
+  const d0 = emptyDoc();
+  const t = (id, name, o = {}) => ({ id, name, emoji: '🔥', color: '#aa0000', items: [], order: 0, archived: false, deleted: false, updatedAt: 1, ...o });
+  d0.templates = [t('t_aaaaaa', 'Push'), t('t_bbbbbb', 'Pull', { emoji: '🚣', color: '#0000aa', archived: true }), t('t_cccccc', 'Gone', { deleted: true }),
+    t('t_dddddd', 'Already', { scheda: 'p_exists', dayName: 'Giorno 1' })];
+  d0.programs = [{ id: 'p_exists', name: 'Exists', kind: 'rotation', perWeek: 1, days: null, seq: ['t_dddddd'], weeks: [], from: null, to: null, deleted: false, updatedAt: 1 }];
+  mem.set('fitness.v1', JSON.stringify(d0));
+  const s1 = await freshStore(memStorage(mem));
+  const docA = s1.getDoc();
+  assert.equal(docA.programs.filter((p) => p.id !== 'p_exists').length, 2);
+  for (const [tid, name, emoji, color] of [['t_aaaaaa', 'Push', '🔥', '#aa0000'], ['t_bbbbbb', 'Pull', '🚣', '#0000aa']]) {
+    const tpl = docA.templates.find((x) => x.id === tid);
+    const p = docA.programs.find((x) => x.id === tpl.scheda);
+    assert.deepEqual([p.kind, p.name, p.emoji, p.color, p.perWeek, p.days, p.from, p.to, p.seq, p.deleted], ['rotation', name, emoji, color, 1, null, null, null, [tid], false]);
+    assert.equal(tpl.dayName, 'Giorno 1');
+  }
+  assert.equal(docA.templates.find((x) => x.id === 't_cccccc').scheda, undefined);
+  assert.equal(docA.templates.find((x) => x.id === 't_dddddd').scheda, 'p_exists');
+  assert.equal(JSON.parse(mem.get('fitness.v1')).programs.length, 3);       // persisted
+  // second load: nothing changes, nothing is written
+  let writes = 0;
+  const counting = { ...memStorage(mem), setItem: (k, v) => { writes++; mem.set(k, String(v)); } };
+  const s2 = await freshStore(counting);
+  assert.deepEqual(s2.getDoc().programs.map((p) => p.id).sort(), docA.programs.map((p) => p.id).sort());
+  assert.equal(writes, 0);
 });
 
 // Wake lock: fake navigator/document installed before a fresh timer.js import (its visibility listener is registered at import).

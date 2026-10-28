@@ -20,7 +20,29 @@ let syncTimer = 0;
 let syncing = false;
 let syncAgain = false;
 
+/** Wrap every live template that is not part of a scheda in a one-day scheda (idempotent). True when anything changed.
+ *  The scheda id derives from the template id, so devices migrating the same data converge on the same program. */
+function migrateSchede(d) {
+  const t = Date.now();
+  let changed = false;
+  for (const tpl of d.templates) {
+    if (tpl.deleted || tpl.scheda) continue;
+    let id = `p_${String(tpl.id).replace(/^t_/, '')}`;
+    if (d.programs.some((p) => p.id === id)) id = newId('p_');
+    d.programs.push({
+      id, name: String(tpl.name ?? '').trim().slice(0, 40) || 'Scheda', kind: 'rotation', emoji: tpl.emoji ?? '💪',
+      color: tpl.color ?? '#2f8f4a', perWeek: 1, days: null, weeks: [], seq: [tpl.id], from: null, to: null, deleted: false, updatedAt: t,
+    });
+    tpl.scheda = id;
+    tpl.dayName = 'Giorno 1';
+    tpl.updatedAt = t;
+    changed = true;
+  }
+  return changed;
+}
+
 export function load() {
+  let migrated = false;
   let raw;
   try {
     raw = localStorage.getItem(KEY);
@@ -41,6 +63,7 @@ export function load() {
     if (!validateDoc(d)) throw new Error('invalid');
     d.settings = { ...emptyDoc().settings, ...d.settings };
     doc = d;
+    migrated = true;
   } catch {
     try {
       localStorage.setItem(KEY + '.corrupt', raw);
@@ -50,6 +73,10 @@ export function load() {
       notice = 'I dati salvati sono danneggiati e non sono riuscito a conservarne una copia: per non perderli, i nuovi dati non verranno salvati.';
     }
   }
+  if (!migrated) return;
+  try {
+    if (migrateSchede(doc)) save('migrate');      // saved only when something changed
+  } catch { /* malformed elements: leave the document as loaded */ }
 }
 
 export const getDoc = () => doc;
@@ -265,6 +292,144 @@ export function deleteProgram(id) {
   if (!p) return;
   p.deleted = true;
   p.updatedAt = now();
+  save('program', id);
+}
+
+// ---- Schede ----------------------------------------------------------------
+// A scheda is a rotation program; its days are templates with { scheda, dayName }, ordered by program.seq.
+
+const cleanText = (v, max = 40) => String(v ?? '').trim().slice(0, max);
+const liveScheda = (id) => doc.programs.find((p) => p.id === id && !p.deleted && p.kind === 'rotation') ?? null;
+const dayLabel = (p, dayName) => `${p.name} · ${dayName}`.slice(0, 40);
+
+function normDays(v) {
+  const out = [...new Set((Array.isArray(v) ? v : []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 7))];
+  return out.length ? out.sort((a, b) => a - b) : null;
+}
+
+/** Create (no id) or update a scheda: name, emoji, color, perWeek (1–7), days (preferred weekdays or null). Returns the id. */
+export function saveScheda(f) {
+  if (readOnly) return null;
+  const fields = {};
+  if ('name' in f) fields.name = cleanText(f.name) || 'Scheda';
+  if ('emoji' in f) fields.emoji = f.emoji;
+  if ('color' in f) fields.color = f.color;
+  if ('perWeek' in f) fields.perWeek = Math.min(7, Math.max(1, Math.round(Number(f.perWeek)) || 1));
+  if ('days' in f) fields.days = normDays(f.days);
+  const cur = f.id ? find(doc.programs, f.id) : null;
+  if (cur) {
+    Object.assign(cur, fields, { updatedAt: now() });
+    for (const t of doc.templates) {               // days follow the scheda's look and name
+      if (t.scheda !== cur.id || t.deleted) continue;
+      t.emoji = cur.emoji;
+      t.color = cur.color;
+      t.name = dayLabel(cur, t.dayName ?? '');
+      t.updatedAt = cur.updatedAt;
+    }
+    save('program', cur.id);
+    return cur.id;
+  }
+  const id = newId('p_');
+  doc.programs.push({
+    name: 'Scheda', emoji: '💪', color: '#2f8f4a', perWeek: 3, days: null, ...fields,
+    id, kind: 'rotation', weeks: [], seq: [], from: null, to: null, deleted: false, updatedAt: now(),
+  });
+  save('program', id);
+  return id;
+}
+
+/** Append a day (template) to the scheda's rotation; dayName defaults to "Giorno n". Returns the template id. */
+export function addSchedaDay(schedaId, { dayName, items = [] } = {}) {
+  if (readOnly) return null;
+  const p = liveScheda(schedaId);
+  if (!p) return null;
+  const name = cleanText(dayName) || `Giorno ${p.seq.length + 1}`;
+  const id = newId('t_');
+  const t = now();
+  doc.templates.push({
+    emoji: p.emoji ?? '💪', color: p.color ?? '#2f8f4a', items: clone(items), name: dayLabel(p, name), scheda: p.id, dayName: name,
+    id, order: nextOrder(doc.templates), archived: false, deleted: false, updatedAt: t,
+  });
+  p.seq.push(id);
+  p.updatedAt = t;
+  save('program', p.id);
+  return id;
+}
+
+/** Update a day's name and / or exercises. */
+export function saveSchedaDay(tplId, { dayName, items } = {}) {
+  if (readOnly) return;
+  const t = find(doc.templates, tplId);
+  if (!t) return;
+  if (cleanText(dayName)) t.dayName = cleanText(dayName);
+  if (items !== undefined) t.items = clone(items);
+  const p = find(doc.programs, t.scheda);
+  if (p) t.name = dayLabel(p, t.dayName ?? '');
+  t.updatedAt = now();
+  save('template', tplId);
+}
+
+/** Swap the day with its neighbour in the scheda's order (dir = -1 up, +1 down). */
+export function moveSchedaDay(tplId, dir) {
+  if (readOnly) return;
+  const p = find(doc.programs, find(doc.templates, tplId)?.scheda);
+  if (!p) return;
+  const i = p.seq.indexOf(tplId);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= p.seq.length) return;
+  [p.seq[i], p.seq[j]] = [p.seq[j], p.seq[i]];
+  p.updatedAt = now();
+  save('program', p.id);
+}
+
+/** Copy of a day, placed right after it. Returns the new template id. */
+export function duplicateSchedaDay(tplId) {
+  if (readOnly) return null;
+  const t = find(doc.templates, tplId);
+  const p = t ? liveScheda(t.scheda) : null;
+  if (!p) return null;
+  const dayName = cleanText(`${t.dayName} (copia)`);
+  const copy = {
+    ...clone(t), id: newId('t_'), dayName, name: dayLabel(p, dayName), order: nextOrder(doc.templates),
+    archived: false, deleted: false, updatedAt: now(),
+  };
+  doc.templates.push(copy);
+  const i = p.seq.indexOf(tplId);
+  p.seq.splice(i < 0 ? p.seq.length : i + 1, 0, copy.id);
+  p.updatedAt = copy.updatedAt;
+  save('program', p.id);
+  return copy.id;
+}
+
+/** Soft delete a day and drop it from its scheda's order (also the last one: the scheda then plans nothing). */
+export function deleteSchedaDay(tplId) {
+  if (readOnly) return;
+  const t = find(doc.templates, tplId);
+  if (!t) return;
+  const ts = now();
+  t.deleted = true;
+  t.updatedAt = ts;
+  const p = find(doc.programs, t.scheda);
+  if (p) {
+    p.seq = p.seq.filter((id) => id !== tplId);
+    p.updatedAt = ts;
+  }
+  save('program', p ? p.id : null);
+}
+
+/** Soft delete a scheda and all its days (sessions stay). */
+export function deleteScheda(id) {
+  if (readOnly) return;
+  const p = find(doc.programs, id);
+  if (!p) return;
+  const ts = now();
+  p.deleted = true;
+  p.updatedAt = ts;
+  for (const t of doc.templates) {
+    if (t.scheda !== id) continue;
+    t.deleted = true;
+    t.updatedAt = ts;
+  }
   save('program', id);
 }
 
