@@ -2,7 +2,7 @@
 import { fromKey } from './logic.js';
 
 // Template colour palette (accent first); identity is also carried by emoji + name.
-export const COLORS = ['#c62f3a', '#6366f1', '#14b8a6', '#f43f5e', '#f59e0b', '#0ea5e9', '#a855f7', '#16a34a'];
+export const COLORS = ['#2f8f4a', '#6366f1', '#14b8a6', '#f43f5e', '#f59e0b', '#0ea5e9', '#a855f7', '#c62f3a'];
 export const DAY_LETTERS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
 export const DAY_SHORT = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 export const MONTHS = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];

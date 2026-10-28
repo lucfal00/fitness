@@ -121,7 +121,7 @@ Un unico documento JSON in `localStorage` (chiave `fitness.v1`):
   "exercises": [{ "id": "x_8fk2la", "name": "Hip thrust", "kind": "weight", "measure": "reps",
     "group": "glutei", "also": ["femorali"], "deleted": false, "updatedAt": 1798364400000 }],
   "exerciseEdits": { "lib_panca_piana": { "name": "Panca", "hidden": false, "t": 1798364400000 } },
-  "templates": [{ "id": "t_k3j9x2", "name": "Push", "emoji": "💪", "color": "#c62f3a",
+  "templates": [{ "id": "t_k3j9x2", "name": "Push", "emoji": "💪", "color": "#2f8f4a",
     "order": 0, "archived": false, "deleted": false, "updatedAt": 1798364400000,
     "items": [{ "ex": "lib_panca_piana", "group": "g1", "rest": 90, "note": "",
       "sets": [{ "w": true, "reps": [10, 10], "kg": 40 }, { "reps": [8, 10], "kg": 60 }] }] }],
@@ -282,9 +282,9 @@ tests/                  logic, metrics, merge, sync (.test.js, node --test)
 - `store.js` è l'unico modulo che scrive su `localStorage`; notifica le viste con un evento `change`.
 - Viste: funzione `render(container, state)`; ricostruiscono il proprio contenuto a ogni `change`
   (la vista sessione aggiorna solo la riga modificata per non perdere il focus degli input).
-- **Aspetto**: token e componenti di Habits; accento `--accent: #c62f3a` (grafici, anelli, icone) e
-  `--accent-strong: #b3202d` per pulsanti pieni con testo bianco (contrasto 6,6:1); tema scuro `#f07c7c` per entrambi con `--on-accent: #0f1117`.
-  Icona: figura anatomica frontale chiara su sfumatura rossa (`#e75653 → #940319`), da `design/fitness-icon-source.webp` con `scripts/make-icons.py`.
+- **Aspetto**: token e componenti di Habits; accento `--accent: #2f8f4a` (grafici, anelli, icone) e
+  `--accent-strong: #267a3e` per pulsanti pieni con testo bianco (contrasto 5,3:1); tema scuro `#8edc78` per entrambi con `--on-accent: #0f1117`.
+  Icona: figura anatomica frontale chiara su sfumatura diagonale verde foglia (`#8edc78 → #2f8f4a`, come Habits e Atlas), da `design/fitness-icon-source.webp` con `scripts/make-icons.py`.
 - Offline: pagine dalla rete (timeout 3 s, poi cache); altri file dalla cache con aggiornamento in background; precache con `cache: 'reload'`.
 
 ## 9. Convivenza con Habits

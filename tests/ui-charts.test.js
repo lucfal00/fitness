@@ -13,7 +13,7 @@ test('ui formatting', () => {
   assert.equal(fmtDuration(65), '1:05');
   assert.equal(fmtDuration(3725), '1:02:05');
   assert.equal(esc('<a "b">'), '&lt;a &quot;b&quot;&gt;');
-  assert.equal(safeColor('red'), '#c62f3a');
+  assert.equal(safeColor('red'), '#2f8f4a');
 });
 
 test('stackedBars: one hit area per series, segments only for non-zero values', () => {

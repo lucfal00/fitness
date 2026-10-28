@@ -1,14 +1,14 @@
 # Generates icons/fitness-v3-*.png from design/fitness-icon-source.webp (needs Python 3 + Pillow).
-# The figure is separated from the source's red gradient, then composited on a fresh gradient:
+# The figure is separated from the source's background, then composited on a fresh diagonal gradient:
 # "any" icons keep transparent rounded corners like Habits; maskable/apple are full-bleed with the
-# figure shrunk into the safe zone. Change TOP/BOTTOM to recolour. Run: python scripts/make-icons.py
+# figure shrunk into the safe zone. Change TL/BR to recolour. Run: python scripts/make-icons.py
 from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / 'design' / 'fitness-icon-source.webp'
 OUT = ROOT / 'icons'
-TOP, BOTTOM = (231, 86, 83), (148, 3, 25)        # gradient, top → bottom
+TL, BR = (142, 220, 120), (47, 143, 74)          # gradient, top-left → bottom-right (as Habits/Atlas)
 W = 1024                                         # working size (supersampled)
 
 
@@ -58,8 +58,8 @@ def extract_figure(src):
 def gradient():
     g = Image.new('RGBA', (W, W))
     d = ImageDraw.Draw(g)
-    for y in range(W):
-        d.line((0, y, W, y), fill=(*lerp(TOP, BOTTOM, y / (W - 1)), 255))
+    for s in range(2 * W - 1):                    # anti-diagonals x + y = s share one colour
+        d.line((s, 0, 0, s), fill=(*lerp(TL, BR, s / (2 * W - 2)), 255))
     return g
 
 
