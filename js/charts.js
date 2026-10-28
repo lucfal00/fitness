@@ -205,8 +205,9 @@ export function barChart(points, target, color, unit, ariaLabel) {
 // ---- Stacked bars: one bar per entry, one segment per key ---------------
 
 /** series: [{ label, values: { [key]: number } }]; keys: segment order, bottom up;
- *  colors: array parallel to keys, or { [key]: colour }. Tooltip lists the non-zero parts. */
-export function stackedBars(series, keys, colors, { ariaLabel = 'Grafico a barre impilate', unit = '' } = {}) {
+ *  colors: array parallel to keys, or { [key]: colour }. Tooltip lists the non-zero parts,
+ *  named by names[key] when given (keys may then be ids). */
+export function stackedBars(series, keys, colors, { ariaLabel = 'Grafico a barre impilate', unit = '', names = {} } = {}) {
   const { W, H, L, R, T, B } = FRAME;
   const iw = W - L - R;
   const ih = H - T - B;
@@ -228,7 +229,7 @@ export function stackedBars(series, keys, colors, { ariaLabel = 'Grafico a barre
       const y1 = y(acc + v);
       const h = y(acc) - y1;
       acc += v;
-      parts.push(`${k} ${fmtNum(v)}`);
+      parts.push(`${names[k] ?? k} ${fmtNum(v)}`);
       bars += `<rect x="${x0}" y="${y1.toFixed(1)}" width="${bw}" height="${Math.max(0, h - 1).toFixed(1)}" rx="1.5" style="fill:${colorOf(k, ki)}"/>`;
     });
     const tip = `${s.label} · ${parts.length ? `${parts.join(', ')} (tot ${fmtNum(acc)}${unit ? ` ${unit}` : ''})` : 'nessun dato'}`;

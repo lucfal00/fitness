@@ -198,3 +198,22 @@ test('estimateMinutes', () => {
   assert.equal(M.estimateMinutes(doc, tpl, 90), 35);
   assert.equal(M.estimateMinutes(doc, { items: [tplItem(BENCH, sets3, { rest: 90 })] }, 90), 5);
 });
+
+test('sessionExerciseStats: per-session maxima, sums and pace basis', () => {
+  const doc = emptyDoc();
+  const st = (o) => ({ w: false, kg: null, reps: null, sec: null, km: null, rpe: null, done: true, ...o });
+  const s = {
+    id: 's1', date: '2026-10-20', start: 1, end: 2, tpl: null, rot: null, rpe: null, deleted: false,
+    items: [
+      { ex: RUN, group: null, note: '', sets: [st({ km: 5, sec: 1500 }), st({ km: 0.5, sec: 100 }), st({ km: 3, sec: 900, w: true })] },
+      { ex: RUN, group: null, note: '', sets: [st({ km: 2, sec: 600, done: false })] },
+    ],
+  };
+  const r = M.sessionExerciseStats(doc, s, RUN);
+  assert.equal(r.km, 5.5);
+  assert.equal(r.sec, 1600);
+  assert.equal(r.pkm, 5);
+  assert.equal(r.psec, 1500);
+  assert.equal(r.maxKm, 5);
+  assert.equal(M.sessionExerciseStats(doc, s, 'nope').km, 0);
+});

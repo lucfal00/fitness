@@ -8,9 +8,10 @@ const SHOWN = 30;                         // points per chart / rows before "Mos
 let date = null;                          // day in the form; null = today
 let msg = null;                           // { text, err } shown once
 let all = false;
+let draft = null;                         // typed raw values kept when moving to a date without a saved entry
 
 const field = (name, label, unit, value, ro) => `<label class="field">${label} (${unit})
-  <input type="text" inputmode="decimal" name="${name}" value="${value != null ? esc(fmtKg(value)) : ''}" placeholder="–"
+  <input type="text" inputmode="decimal" name="${name}" value="${draft ? esc(draft[name] ?? '') : value != null ? esc(fmtKg(value)) : ''}" placeholder="–"
     autocomplete="off" ${ro ? 'disabled' : ''}></label>`;
 
 function form(doc, day, today, ro) {
@@ -96,18 +97,24 @@ export function render(el, { doc, today, refresh }) {
       if (!Number.isFinite(v) || v <= 0 || v > 500) {
         msg = { text: 'Inserisci solo numeri positivi (es. 78,4).', err: true };
         date = d;
+        draft = Object.fromEntries(['kg', ...MEASURES.map(([m]) => m)].map((q) => [q, f.elements[q].value]));
         refresh();
         return;
       }
       patch[k] = Math.round(v * 10) / 10;
     }
     date = d;
+    draft = null;
     msg = { text: `Salvato (${fmtFull(d)}).` };
     setBody(d, patch);
   };
   f.elements.date.onchange = (e) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) return;
-    date = e.target.value;
+    const next = e.target.value;
+    const saved = bodyEntries(doc).some((x) => x.date === next);
+    // keep what was typed unless the chosen date has an entry, which is loaded instead
+    draft = saved ? null : Object.fromEntries(['kg', ...MEASURES.map(([m]) => m)].map((k) => [k, f.elements[k].value]));
+    date = next;
     msg = null;
     refresh();
   };
@@ -116,6 +123,7 @@ export function render(el, { doc, today, refresh }) {
     const act = b?.dataset.act;
     if (act === 'edit') {
       date = b.dataset.d;
+      draft = null;
       msg = null;
       refresh();
       window.scrollTo(0, 0);

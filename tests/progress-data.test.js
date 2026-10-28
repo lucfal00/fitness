@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyDoc } from '../js/logic.js';
+import { emptyDoc, addDays } from '../js/logic.js';
 import {
-  periodRange, bucketStats, cardioTotals, exerciseSeries, bodyEntries, movingAverage, weekGroupSets, trainedIn, sessionNames,
+  periodRange, shiftPeriod, bucketStats, cardioTotals, exerciseSeries, bodyEntries, movingAverage, weekGroupSets, trainedIn, sessionNames,
 } from '../js/views/progress-data.js';
 
 const noon = (date) => new Date(`${date}T12:00:00`).getTime();
@@ -12,20 +12,36 @@ const sess = (date, items, o = {}) => ({
 });
 const item = (ex, sets) => ({ ex, group: null, note: '', sets });
 
-test('periodRange: complete axes ending with the current week / month', () => {
+test('periodRange: calendar periods like Habits, complete axes', () => {
   const w = periodRange('settimana', '2026-10-28');
-  assert.equal(w.buckets.length, 12);
-  assert.equal(w.buckets[11].from, '2026-10-26');
-  assert.equal(w.buckets[11].to, '2026-11-01');
-  assert.equal(w.buckets[0].from, '2026-08-10');
-  assert.equal(periodRange('6mesi', '2026-10-28').buckets.length, 26);
-  assert.equal(periodRange('anno', '2026-10-28').buckets.length, 52);
+  assert.equal(w.from, '2026-10-26');
+  assert.equal(w.to, '2026-11-01');                       // week across a month boundary
+  assert.equal(w.buckets.length, 7);
+  assert.deepEqual(w.buckets.map((b) => b.label), ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']);
+  assert.equal(w.buckets[6].from, '2026-11-01');
+  assert.equal(w.title, '26 ott – 1 nov');
   const m = periodRange('mese', '2026-10-28');
-  assert.equal(m.buckets.length, 12);
-  assert.equal(m.buckets[11].from, '2026-10-01');
-  assert.equal(m.buckets[11].to, '2026-10-31');
-  assert.equal(m.buckets[0].from, '2025-11-01');
-  assert.equal(m.buckets[0].to, '2025-11-30');
+  assert.equal(m.buckets.length, 31);
+  assert.equal(m.title, 'Ottobre 2026');
+  assert.equal(periodRange('mese', '2028-02-10').buckets.length, 29);   // leap year
+  assert.equal(periodRange('mese', '2028-02-10').to, '2028-02-29');
+  assert.equal(periodRange('mese', '2027-02-10').buckets.length, 28);
+  const h = periodRange('6mesi', '2026-02-15');          // across a year boundary
+  assert.equal(h.from, '2025-09-01');
+  assert.equal(h.to, '2026-02-28');
+  assert.equal(h.title, 'Set – Feb 2026');
+  assert.equal(h.buckets[0].from, '2025-09-01');
+  assert.equal(h.buckets[h.buckets.length - 1].to, '2026-02-28');
+  assert.ok(h.buckets.every((b, i, a) => i === 0 || b.from === addDays(a[i - 1].to, 1)));
+  const y = periodRange('anno', '2026-10-28');
+  assert.equal(y.buckets.length, 12);
+  assert.equal(y.from, '2026-01-01');
+  assert.equal(y.to, '2026-12-31');
+  assert.equal(y.buckets[1].to, '2026-02-28');
+  assert.equal(y.title, '2026');
+  assert.equal(shiftPeriod('settimana', '2026-10-28', -1), '2026-10-21');
+  assert.equal(shiftPeriod('6mesi', '2026-10-28', 1), '2027-04-01');
+  assert.equal(shiftPeriod('anno', '2026-10-28', -1), '2025-10-01');
 });
 
 test('bucketStats: volume, groups, duration, RPE, cardio', () => {
@@ -35,7 +51,7 @@ test('bucketStats: volume, groups, duration, RPE, cardio', () => {
     sess('2026-10-28', [item('lib_corsa', [set({ km: 5, sec: 1500 })])], { rpe: 8, end: noon('2026-10-28') + 1800000 }),
     sess('2026-10-28', [item('lib_squat', [set({ kg: 80, reps: 5 })])], { end: null, id: 's_open' }),
   ];
-  const [b] = bucketStats(d, [{ from: '2026-10-26', to: '2026-11-01' }]);
+  const [b] = bucketStats(d, [{ from: '2026-10-26', to: '2026-11-01' }], '2026-10-28');
   assert.equal(b.n, 2);
   assert.equal(b.volume, 480);
   assert.equal(b.groups.petto, 1);
@@ -46,6 +62,12 @@ test('bucketStats: volume, groups, duration, RPE, cardio', () => {
   assert.equal(weekGroupSets(d, '2026-10-26').petto, 1);
   assert.deepEqual(sessionNames(d)['2026-10-27'], ['Allenamento libero']);
   assert.deepEqual(trainedIn(d, '2026-10-01', '2026-10-31').map((x) => x.id), ['lib_corsa', 'lib_panca_piana']);
+});
+
+test('bucketStats: days after today stay empty', () => {
+  const d = emptyDoc();
+  d.sessions = [sess('2026-10-30', [item('lib_squat', [set({ kg: 80, reps: 5 })])])];
+  assert.equal(bucketStats(d, [{ from: '2026-10-26', to: '2026-11-01' }], '2026-10-28')[0].n, 0);
 });
 
 test('exerciseSeries: e1RM, max load, volume per session, oldest first', () => {

@@ -1,8 +1,8 @@
 // DOM-free aggregation for the Progressi, exercise detail and Corpo views.
-import { addDays, addMonths, weekStart, isConcluded } from '../logic.js';
+import { addDays, addMonths, weekStart, monthEnd, fromKey, isConcluded } from '../logic.js';
 import { resolveExercise } from '../library.js';
-import { sessionVolume, groupSets, exerciseHistory, records, setVolume, bodyWeightAt, e1rm, pace } from '../metrics.js';
-import { fmtKg, fmtNum, fmtDuration, fmtShort, MONTHS } from '../ui.js';
+import { sessionVolume, groupSets, exerciseHistory, records, sessionExerciseStats, pace } from '../metrics.js';
+import { fmtKg, fmtNum, fmtDuration, fmtShort, fmtDay, cap, MONTHS, DAY_SHORT } from '../ui.js';
 
 export const PERIODS = [['settimana', 'Settimana'], ['mese', 'Mese'], ['6mesi', '6 mesi'], ['anno', 'Anno']];
 
@@ -18,46 +18,72 @@ const round1 = (x) => Math.round(x * 10) / 10;
 
 // ---- Periods -----------------------------------------------------------
 
-const weeks = (today, n) => Array.from({ length: n }, (_, i) => {
-  const from = addDays(weekStart(today), -7 * (n - 1 - i));
-  return { from, to: addDays(from, 6) };
-});
+const dm = (key) => `${+key.slice(8)} ${MONTHS[+key.slice(5, 7) - 1].toLowerCase()}`;
+const monthYear = new Intl.DateTimeFormat('it-IT', { month: 'long', year: 'numeric' });
 
-/** Rolling window ending with the current week/month; the axis is always complete (buckets without data stay empty).
- *  Returns { title, buckets: [{ from, to, label, tip }] }. */
-export function periodRange(kind, today) {
-  let buckets;
-  let title;
-  if (kind === 'mese') {
-    buckets = Array.from({ length: 12 }, (_, i) => {
-      const from = addMonths(today, i - 11);
-      const m = +from.slice(5, 7) - 1;
-      return { from, to: addDays(addMonths(from, 1), -1), label: MONTHS[m], tip: `${MONTHS[m]} ${from.slice(0, 4)}` };
-    });
-    title = 'Ultimi 12 mesi';
+/** Complete calendar period containing anchor (same rules as Habits): week (7 days), month (days),
+ *  6 months (weeks, ending with the anchor's month), year (12 months).
+ *  Returns { from, to, title, buckets: [{ from, to, label, tip }] }; the axis always covers the whole period. */
+export function periodRange(kind, anchor) {
+  let from;
+  let to;
+  let raw;
+  if (kind === 'settimana') {
+    from = weekStart(anchor);
+    to = addDays(from, 6);
+    raw = Array.from({ length: 7 }, (_, i) => ({ from: addDays(from, i), to: addDays(from, i) }));
+  } else if (kind === 'mese') {
+    from = `${anchor.slice(0, 8)}01`;
+    to = monthEnd(anchor);
+    raw = [];
+    for (let k = from; k <= to; k = addDays(k, 1)) raw.push({ from: k, to: k });
+  } else if (kind === '6mesi') {
+    from = addMonths(anchor, -5);
+    to = monthEnd(anchor);
+    raw = [];
+    for (let w = weekStart(from); w <= to; w = addDays(w, 7)) {
+      raw.push({ from: w < from ? from : w, to: addDays(w, 6) > to ? to : addDays(w, 6) });
+    }
   } else {
-    const n = { settimana: 12, '6mesi': 26, anno: 52 }[kind] ?? 12;
-    let lastMonth = -1;
-    buckets = weeks(today, n).map((b) => {
-      const m = +b.to.slice(5, 7) - 1;
-      const label = kind === 'settimana' ? fmtShort(b.from) : (m !== lastMonth ? MONTHS[m] : '');
-      lastMonth = m;
-      return { ...b, label, tip: `Settimana dal ${fmtShort(b.from)}` };
-    });
-    if (kind === 'settimana') buckets = buckets.map((b, i) => ({ ...b, label: (11 - i) % 3 === 0 ? b.label : '' }));
-    title = { settimana: 'Ultime 12 settimane', '6mesi': 'Ultime 26 settimane', anno: 'Ultime 52 settimane' }[kind] ?? '';
+    from = `${anchor.slice(0, 4)}-01-01`;
+    to = `${anchor.slice(0, 4)}-12-31`;
+    raw = Array.from({ length: 12 }, (_, i) => ({ from: addMonths(from, i), to: monthEnd(addMonths(from, i)) }));
   }
-  return { title, buckets };
+  let lastMonth = -1;
+  const buckets = raw.map((b, i) => {
+    const day = +b.from.slice(8);
+    const month = +b.to.slice(5, 7) - 1;
+    if (kind === 'settimana') return { ...b, label: DAY_SHORT[i], tip: fmtDay(b.from) };
+    if (kind === 'mese') return { ...b, label: [1, 8, 15, 22, 29].includes(day) ? String(day) : '', tip: fmtDay(b.from) };
+    if (kind === '6mesi') {
+      const label = month !== lastMonth ? MONTHS[month] : '';
+      lastMonth = month;
+      return { ...b, label, tip: `Settimana dal ${fmtShort(b.from)}` };
+    }
+    return { ...b, label: MONTHS[i], tip: `${MONTHS[i]} ${b.from.slice(0, 4)}` };
+  });
+  const title = kind === 'settimana' ? `${dm(from)} – ${dm(to)}`
+    : kind === 'mese' ? cap(monthYear.format(fromKey(from)))
+      : kind === '6mesi' ? `${MONTHS[+from.slice(5, 7) - 1]} – ${MONTHS[+to.slice(5, 7) - 1]} ${to.slice(0, 4)}`
+        : from.slice(0, 4);
+  return { from, to, title, buckets };
+}
+
+/** Anchor of the previous (dir = -1) or next (+1) period of the same kind. */
+export function shiftPeriod(kind, anchor, dir) {
+  if (kind === 'settimana') return addDays(anchor, 7 * dir);
+  return addMonths(anchor, dir * ({ mese: 1, '6mesi': 6 }[kind] ?? 12));
 }
 
 export const concludedSessions = (doc) => doc.sessions.filter(isConcluded);
 
 // ---- Per-bucket statistics ---------------------------------------------
 
-/** Per bucket: n sessions, volume, sets per group, average minutes, average RPE, cardio { exId: { km, pkm, psec } }. */
-export function bucketStats(doc, buckets) {
+/** Per bucket (days after today stay empty): n sessions, volume, sets per group, average minutes, average RPE, cardio { exId: { km, pkm, psec } }. */
+export function bucketStats(doc, buckets, today) {
   const out = buckets.map((b) => ({ ...b, n: 0, volume: 0, groups: {}, minutes: null, rpe: null, cardio: {}, _m: [], _r: [] }));
   for (const s of concludedSessions(doc)) {
+    if (s.date > today) continue;
     const b = out.find((x) => s.date >= x.from && s.date <= x.to);
     if (!b) continue;
     b.n++;
@@ -65,17 +91,14 @@ export function bucketStats(doc, buckets) {
     for (const [g, v] of Object.entries(groupSets(doc, [s]))) b.groups[g] = (b.groups[g] ?? 0) + v;
     if (s.end > s.start) b._m.push((s.end - s.start) / 60000);
     if (s.rpe != null) b._r.push(s.rpe);
-    for (const it of s.items) {
-      if (resolveExercise(doc, it.ex)?.kind !== 'cardio') continue;
-      const c = (b.cardio[it.ex] ??= { km: 0, pkm: 0, psec: 0 });
-      for (const set of it.sets) {
-        if (!isWork(set) || !(set.km > 0)) continue;
-        c.km += set.km;
-        if (set.km >= 1 && set.sec > 0) {
-          c.pkm += set.km;
-          c.psec += set.sec;
-        }
-      }
+    for (const id of new Set(s.items.map((it) => it.ex))) {
+      if (resolveExercise(doc, id)?.kind !== 'cardio') continue;
+      const st = sessionExerciseStats(doc, s, id);
+      if (!(st.km > 0)) continue;
+      const c = (b.cardio[id] ??= { km: 0, pkm: 0, psec: 0 });
+      c.km += st.km;
+      c.pkm += st.pkm;
+      c.psec += st.psec;
     }
   }
   const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
@@ -159,22 +182,15 @@ function setText(ex, s) {
 export function exerciseSeries(doc, exId) {
   const ex = resolveExercise(doc, exId);
   if (!ex) return [];
-  return exerciseHistory(doc, exId).map(({ session, item }) => {
-    const bw = bodyWeightAt(doc, session.date);
-    const sets = item.sets.filter(isWork);
-    const max = (f) => sets.reduce((m, s) => { const v = f(s); return v != null && (m == null || v > m) ? v : m; }, null);
-    const km = sets.reduce((a, s) => a + (s.km || 0), 0);
-    const sec = sets.reduce((a, s) => a + (s.sec || 0), 0);
-    const kmPace = sets.filter((s) => s.km >= 1 && s.sec > 0);
-    const volume = sets.reduce((a, s) => a + (setVolume(ex, s, bw) ?? 0), 0);
-    const load = (s) => (ex.kind === 'weight' ? s.kg ?? null : bw === undefined ? null : bw + (s.kg || 0));
+  const seen = new Set();
+  return exerciseHistory(doc, exId).filter(({ session }) => !seen.has(session) && seen.add(session)).map(({ session }) => {
+    const st = sessionExerciseStats(doc, session, exId);
+    const sets = session.items.filter((it) => it.ex === exId).flatMap((it) => it.sets.filter(isWork));
     return {
       id: session.id, date: session.date, text: sets.map((s) => setText(ex, s)).join(' · '),
-      e1rm: ex.kind === 'weight' || ex.kind === 'body' ? max((s) => e1rm(load(s), s.reps)) : null,
-      maxKg: ex.kind === 'weight' ? max((s) => s.kg ?? null) : null,
-      maxReps: max((s) => s.reps ?? null), maxSec: max((s) => s.sec ?? null),
-      volume: Math.round(volume), km: Math.round(km * 100) / 100, sec,
-      pace: kmPace.length ? kmPace.reduce((a, s) => a + s.sec, 0) / kmPace.reduce((a, s) => a + s.km, 0) : null,
+      e1rm: st.e1rm, maxKg: st.maxKg, maxReps: st.maxReps, maxSec: st.maxSec,
+      volume: Math.round(st.volume ?? 0), km: Math.round(st.km * 100) / 100, sec: st.sec,
+      pace: st.pkm ? st.psec / st.pkm : null,
     };
   });
 }

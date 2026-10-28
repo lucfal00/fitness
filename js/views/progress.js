@@ -2,25 +2,26 @@
 import { adherence, weekStreaks, addDays, weekStart, doneCount } from '../logic.js';
 import { heatmap, valueLine, barChart, stackedBars } from '../charts.js';
 import { bodyMap } from '../bodymap.js';
-import { bodyMapLevel } from '../metrics.js';
+import { bodyMapLevel, pace } from '../metrics.js';
 import { resolveExercise, GROUPS } from '../library.js';
 import { esc, COLORS, GROUP_LABELS, fmtShort, fmtFull, pct, safeColor } from '../ui.js';
 import {
-  PERIODS, GROUP_COLORS, periodRange, bucketStats, cardioTotals, weekGroupSets, sessionNames, recordSummary, trainedIn,
+  PERIODS, GROUP_COLORS, periodRange, shiftPeriod, bucketStats, cardioTotals, weekGroupSets, sessionNames, recordSummary, trainedIn,
 } from './progress-data.js';
 
 let period = 'settimana';
+let anchor = null;                        // any day of the shown period; null = today
 let mapWeek = null;                       // Monday of the body-map week; null = current week
 const ACCENT = COLORS[0];
 const MAX_CARDIO = 5;
+const REST_KEY = '#altro';                 // reserved segment key: exercise ids never contain '#'
+const MAX_RECORDS = 12;
 
 const empty = (text) => `<p class="muted">${text}</p>`;
 const bars = (points, unit, aria) => barChart(points, null, ACCENT, unit, aria);
 
 function costanza(doc, r, today) {
-  const from = r.buckets[0].from;
-  const to = r.buckets[r.buckets.length - 1].to;
-  const a = adherence(doc, from, to, today);
+  const a = adherence(doc, r.from, r.to, today);
   const st = weekStreaks(doc, today);
   const names = sessionNames(doc);
   const tip = (k, v) => `${fmtFull(k)} · ${v ? names[k].join(', ') : 'nessun allenamento'}`;
@@ -91,25 +92,26 @@ function cardio(doc, stats) {
   const shown = top.slice(0, MAX_CARDIO);
   const rest = top.slice(MAX_CARDIO);
   const nameOf = (id) => resolveExercise(doc, id)?.name ?? 'Esercizio';
-  const keys = [...shown.map((t) => nameOf(t.id)), ...(rest.length ? ['Altro'] : [])];
+  const keys = [...shown.map((t) => t.id), ...(rest.length ? [REST_KEY] : [])];
+  const names = Object.fromEntries(keys.map((k) => [k, k === REST_KEY ? 'Altro' : nameOf(k)]));
   const colors = keys.map((_, i) => COLORS[i % COLORS.length]);
   const series = stats.map((b) => {
     const values = {};
-    shown.forEach((t, i) => { values[keys[i]] = Math.round((b.cardio[t.id]?.km ?? 0) * 100) / 100; });
-    if (rest.length) values.Altro = Math.round(rest.reduce((a, t) => a + (b.cardio[t.id]?.km ?? 0), 0) * 100) / 100;
+    shown.forEach((t) => { values[t.id] = Math.round((b.cardio[t.id]?.km ?? 0) * 100) / 100; });
+    if (rest.length) values[REST_KEY] = Math.round(rest.reduce((a, t) => a + (b.cardio[t.id]?.km ?? 0), 0) * 100) / 100;
     return { label: b.label, values };
   });
   const main = shown[0].id;
   const pts = stats.map((b) => {
     const c = b.cardio[main];
     const sec = c?.pkm ? c.psec / c.pkm : null;
-    const mm = sec == null ? '' : ` · ${Math.floor(Math.round(sec) / 60)}:${String(Math.round(sec) % 60).padStart(2, '0')}/km`;
+    const mm = sec == null ? '' : ` · ${pace(c.psec, c.pkm)}/km`;
     return { label: b.label, tip: `${b.tip}${mm}`, value: sec == null ? null : Math.round(sec) };
   });
-  const legend = keys.map((k, i) => `<span><i style="background:${safeColor(colors[i])}"></i>${esc(k)}</span>`).join('');
+  const legend = keys.map((k, i) => `<span><i style="background:${safeColor(colors[i])}"></i>${esc(names[k])}</span>`).join('');
   return `<section class="card"><h2>Cardio</h2>
     <p class="chart-sub">Chilometri</p>
-    ${stackedBars(series, keys, colors, { ariaLabel: 'Chilometri per periodo e attività', unit: 'km' })}
+    ${stackedBars(series, keys, colors, { ariaLabel: 'Chilometri per periodo e attività', unit: 'km', names })}
     <div class="legend">${legend}</div>
     ${pts.some((p) => p.value != null) ? `<p class="chart-sub">Passo, ${esc(nameOf(main))} (secondi al km: più basso = più veloce)</p>
       ${valueLine(pts, COLORS[0], `Passo di ${nameOf(main)} in secondi al km`, { unit: 's/km' })}` : ''}
@@ -117,19 +119,22 @@ function cardio(doc, stats) {
 }
 
 function recordsCard(doc, r, today) {
-  const from = r.buckets[0].from;
-  const list = trainedIn(doc, from, today).slice(0, 12).map(({ id, last }) => ({ id, last, text: recordSummary(doc, id) }))
+  const all = trainedIn(doc, r.from, r.to < today ? r.to : today).map(({ id, last }) => ({ id, last, text: recordSummary(doc, id) }))
     .filter((x) => x.text && resolveExercise(doc, x.id));
+  const list = all.slice(0, MAX_RECORDS);
   if (!list.length) return `<section class="card st-wide pr-list"><h2>Record personali</h2>${empty('Nessun record in questo periodo.')}</section>`;
   const rows = list.map((x) => `<li><a class="row" href="#esercizio/${encodeURIComponent(x.id)}">
     <span style="flex:1"><b>${esc(resolveExercise(doc, x.id).name)}</b><small class="muted">${esc(x.text)}</small></span>
     <span class="stat-meta">${fmtFull(x.last)}</span></a></li>`).join('');
-  return `<section class="st-wide pr-list"><h2 class="list-title">Record personali</h2><ul class="card list rows">${rows}</ul></section>`;
+  return `<section class="st-wide pr-list"><h2 class="list-title">Record personali</h2><ul class="card list rows">${rows}</ul>
+    ${all.length > list.length ? `<p class="chart-sub">Mostrati ${list.length} di ${all.length}</p>` : ''}</section>`;
 }
 
 export function render(el, { doc, today, refresh }) {
-  const r = periodRange(period, today);
-  const stats = bucketStats(doc, r.buckets);
+  const at = anchor && anchor <= today ? anchor : today;
+  const r = periodRange(period, at);
+  const stats = bucketStats(doc, r.buckets, today);
+  const canNext = periodRange(period, shiftPeriod(period, at, 1)).from <= today;
   const seg = PERIODS.map(([v, label]) => `<label class="pick"><input type="radio" name="period" value="${v}"
     ${period === v ? 'checked' : ''}><span>${label}</span></label>`).join('');
   const any = doc.sessions.some((s) => s.end != null && !s.deleted);
@@ -137,7 +142,11 @@ export function render(el, { doc, today, refresh }) {
   el.innerHTML = `
     <header class="top"><h1 class="grow">Progressi</h1><a class="btn small" href="#corpo">Corpo</a></header>
     <div class="seg period-seg">${seg}</div>
-    <div class="period-nav"><b>${r.title}</b></div>
+    <div class="period-nav">
+      <button class="icon-btn" data-act="pprev" aria-label="Periodo precedente">‹</button>
+      <b>${esc(r.title)}</b>
+      <button class="icon-btn" data-act="pnext" aria-label="Periodo successivo" ${canNext ? '' : 'disabled'}>›</button>
+    </div>
     ${any ? `<div class="stats-grid">
       ${costanza(doc, r, today)}
       ${volume(stats)}
@@ -152,11 +161,16 @@ export function render(el, { doc, today, refresh }) {
   el.onchange = (e) => {
     if (e.target.name !== 'period') return;
     period = e.target.value;
-    mapWeek = null;
+    anchor = null;
     refresh();
   };
   el.onclick = (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'pprev' || act === 'pnext') {
+      anchor = shiftPeriod(period, at, act === 'pprev' ? -1 : 1);
+      refresh();
+      return;
+    }
     if (act !== 'prev' && act !== 'next') return;
     const cur = weekStart(today);
     const wk = mapWeek && mapWeek < cur ? mapWeek : cur;

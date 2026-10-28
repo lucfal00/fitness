@@ -148,6 +148,25 @@ export function records(doc, exId, { before } = {}) {
   return recordsOver(doc, exId, sessions);
 }
 
+/** Stats of one exercise in one session (all its items): the records fields plus distance/time sums
+ *  { km, sec, pkm, psec }; pkm/psec cover only sets of at least 1 km with a time (for the pace). */
+export function sessionExerciseStats(doc, session, exId) {
+  const out = { ...recordsOver(doc, exId, [session]), km: 0, sec: 0, pkm: 0, psec: 0 };
+  for (const it of session.items) {
+    if (it.ex !== exId) continue;
+    for (const set of it.sets) {
+      if (!isWork(set)) continue;
+      out.km += set.km || 0;
+      out.sec += set.sec || 0;
+      if (set.km >= 1 && set.sec > 0) {
+        out.pkm += set.km;
+        out.psec += set.sec;
+      }
+    }
+  }
+  return out;
+}
+
 const HIGHER = ['maxKg', 'e1rm', 'volume', 'maxReps', 'maxSec', 'maxKm'];
 
 /** Records strictly beaten by the session and exercises done for the first time (§6.8). */
