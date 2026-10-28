@@ -72,7 +72,7 @@ test('mergeDocs does not mutate inputs and returns a result validateDoc accepts'
   const b = emptyDoc();
   a.exercises = [item('x', 1)];
   b.exercises = [item('x', 2), item('y', 1)];
-  b.plan = { d: { items: null, t: 1 } };
+  b.plan = { '2026-11-01': { items: null, t: 1 } };
   const sa = JSON.stringify(a);
   const sb = JSON.stringify(b);
   const { doc, count } = mergeDocs(a, b);
@@ -87,6 +87,27 @@ test('mergeDocs does not mutate inputs and returns a result validateDoc accepts'
 test('merging identical docs yields count 0', () => {
   const a = emptyDoc();
   a.sessions = [item('s', 3)];
-  a.plan = { d: { items: ['A'], t: 3 } };
+  a.plan = { '2026-11-01': { items: ['A'], t: 3 } };
   assert.equal(mergeDocs(a, JSON.parse(JSON.stringify(a))).count, 0);
+});
+
+test('date-keyed maps: non-date keys (incl. __proto__) are dropped, valid keys kept', () => {
+  const incoming = emptyDoc();
+  incoming.body = JSON.parse('{"2026-10-28":{"kg":78,"t":1},"<img src=x onerror=alert(1)>":{"kg":1,"t":1},"__proto__":{"kg":9,"t":1},"constructor":{"kg":9,"t":1}}');
+  incoming.plan = JSON.parse('{"2026-11-01":{"items":["a"],"t":1},"x\\"y":{"items":[],"t":1},"__proto__":{"items":["z"],"t":1}}');
+  const { doc, count } = mergeDocs(emptyDoc(), incoming);
+  assert.deepEqual(Object.keys(doc.body), ['2026-10-28']);
+  assert.deepEqual(Object.keys(doc.plan), ['2026-11-01']);
+  assert.equal(Object.getPrototypeOf(doc.body), Object.prototype);
+  assert.equal(doc.body.kg, undefined);
+  assert.equal(count, 2);
+});
+
+test('exerciseEdits: inherited names are not treated as existing keys', () => {
+  const incoming = emptyDoc();
+  incoming.exerciseEdits = JSON.parse('{"constructor":{"name":"x","t":0},"lib_a":{"name":"A","t":1}}');
+  const { doc } = mergeDocs(emptyDoc(), incoming);
+  assert.equal(Object.hasOwn(doc.exerciseEdits, 'lib_a'), true);
+  assert.equal(Object.hasOwn(doc.exerciseEdits, 'constructor'), true);
+  assert.deepEqual(doc.exerciseEdits.constructor, { name: 'x', t: 0 });
 });

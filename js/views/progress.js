@@ -125,7 +125,7 @@ function recordsCard(doc, r, today) {
   if (!list.length) return `<section class="card st-wide pr-list"><h2>Record personali</h2>${empty('Nessun record in questo periodo.')}</section>`;
   const rows = list.map((x) => `<li><a class="row" href="#esercizio/${encodeURIComponent(x.id)}">
     <span style="flex:1"><b>${esc(resolveExercise(doc, x.id).name)}</b><small class="muted">${esc(x.text)}</small></span>
-    <span class="stat-meta">${fmtFull(x.last)}</span></a></li>`).join('');
+    <span class="stat-meta">${esc(fmtFull(x.last))}</span></a></li>`).join('');
   return `<section class="st-wide pr-list"><h2 class="list-title">Record personali</h2><ul class="card list rows">${rows}</ul>
     ${all.length > list.length ? `<p class="chart-sub">Mostrati ${list.length} di ${all.length}</p>` : ''}</section>`;
 }

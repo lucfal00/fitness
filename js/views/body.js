@@ -56,9 +56,9 @@ function entryList(entries, ro) {
   const rows = shown.map((e) => {
     const parts = [e.kg != null ? `${fmtKg(e.kg)} kg` : null,
       ...MEASURES.filter(([k]) => e[k] != null).map(([k, l]) => `${l.toLowerCase()} ${fmtKg(e[k])}`)].filter(Boolean);
-    return `<li><span class="grow"><b>${fmtFull(e.date)}</b><small class="muted">${esc(parts.join(' · '))}</small></span>
-      <span class="btn-row"><button class="btn small" data-act="edit" data-d="${e.date}">Modifica</button>
-      <button class="btn small danger" data-act="del" data-d="${e.date}" ${ro ? 'disabled' : ''}>Elimina</button></span></li>`;
+    return `<li><span class="grow"><b>${esc(fmtFull(e.date))}</b><small class="muted">${esc(parts.join(' · '))}</small></span>
+      <span class="btn-row"><button class="btn small" data-act="edit" data-d="${esc(e.date)}">Modifica</button>
+      <button class="btn small danger" data-act="del" data-d="${esc(e.date)}" ${ro ? 'disabled' : ''}>Elimina</button></span></li>`;
   }).join('');
   return `<section class="st-wide"><h2 class="list-title">Registrazioni</h2>
     <ul class="card list rows">${rows}</ul>
