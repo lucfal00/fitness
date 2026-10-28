@@ -139,7 +139,7 @@ export function saveTemplate(t) {
   }
   const id = newId('t_');
   doc.templates.push({
-    emoji: '💪', color: '#f97316', items: [], ...fields, id, order: nextOrder(doc.templates),
+    emoji: '💪', color: '#16a34a', items: [], ...fields, id, order: nextOrder(doc.templates),
     archived: false, deleted: false, updatedAt: now(),
   });
   save('template', id);

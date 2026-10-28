@@ -282,9 +282,9 @@ tests/                  logic, metrics, merge, sync (.test.js, node --test)
 - `store.js` è l'unico modulo che scrive su `localStorage`; notifica le viste con un evento `change`.
 - Viste: funzione `render(container, state)`; ricostruiscono il proprio contenuto a ogni `change`
   (la vista sessione aggiorna solo la riga modificata per non perdere il focus degli input).
-- **Aspetto**: token e componenti di Habits; accento `--accent: #f97316` (grafici, anelli, icone) e
-  `--accent-strong: #c2410c` per pulsanti pieni con testo bianco (contrasto 5,2:1); tema scuro `#fb923c` per entrambi con `--on-accent: #0f1117`.
-  Icona: riquadro con sfumatura corallo → arancio e manubrio color crema `#fffaf4`, stessa geometria di quella di Habits.
+- **Aspetto**: token e componenti di Habits; accento `--accent: #16a34a` (grafici, anelli, icone) e
+  `--accent-strong: #15803d` per pulsanti pieni con testo bianco (contrasto 5,0:1); tema scuro `#4ade80` per entrambi con `--on-accent: #0f1117`.
+  Icona: riquadro con sfumatura verde chiaro → verde (`#7ee0a1 → #16a34a`) e manubrio color crema `#fffaf4`, stessa geometria di quella di Habits.
 - Offline: pagine dalla rete (timeout 3 s, poi cache); altri file dalla cache con aggiornamento in background; precache con `cache: 'reload'`.
 
 ## 9. Convivenza con Habits

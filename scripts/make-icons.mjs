@@ -1,15 +1,15 @@
-// Generates icons/fitness-v1-*.png (no dependencies): coral→orange gradient tile with a dumbbell.
+// Generates icons/fitness-v2-*.png (no dependencies): light-green→green gradient tile with a dumbbell.
 // Same family as Habits: rounded square, radius 23 %, warm-white symbol. "any" icons keep transparent
 // corners; maskable / apple-touch are full-bleed (iOS fills transparency with black and rounds the
 // corners itself); the symbol lies inside the 80 % safe circle. Geometry in 0..100
-// units, matching icons/fitness-v1.svg. Run: node scripts/make-icons.mjs
+// units, matching icons/fitness-v2.svg. Run: node scripts/make-icons.mjs
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const OUT = new URL('../icons/', import.meta.url);
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-const GRADIENT = ['#ffa36c', '#f0603f'];     // top-left → bottom-right
+const GRADIENT = ['#7ee0a1', '#16a34a'];     // top-left → bottom-right
 const INK = hex('#fffaf4');
 // Dumbbell: bar + two pairs of plates, as [x0, y0, x1, y1, corner radius] boxes.
 const BOXES = [[21, 46.8, 79, 53.2, 3.2], [27, 30, 37, 70, 5], [63, 30, 73, 70, 5], [16.5, 37, 25.5, 63, 4.5], [74.5, 37, 83.5, 63, 4.5]];
@@ -100,10 +100,10 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   mkdirSync(OUT, { recursive: true });
   // Names carry the design version: devices cache icons by URL, so a redesign needs new names.
   const ICONS = [
-    ['fitness-v1-192.png', 192, false],
-    ['fitness-v1-512.png', 512, false],
-    ['fitness-v1-maskable-512.png', 512, true],
-    ['fitness-v1-apple-180.png', 180, true],
+    ['fitness-v2-192.png', 192, false],
+    ['fitness-v2-512.png', 512, false],
+    ['fitness-v2-maskable-512.png', 512, true],
+    ['fitness-v2-apple-180.png', 180, true],
   ];
   for (const [name, size, fullBleed] of ICONS) {
     writeFileSync(new URL(name, OUT), draw(size, fullBleed));
