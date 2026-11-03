@@ -1,5 +1,5 @@
 // "A tempo" (#timer/<sessionId>): full-screen player of a timed day. Countdown ring, phase colours, next step,
-// beeps in the last 3 seconds and at every change, pause, back and forward. Time comes from timestamps, so it stays right
+// beeps and red colours in the last 5 seconds, a long beep at every change, pause, back and forward. Time comes from timestamps, so it stays right
 // after the app was in the background (steps that ended meanwhile are counted as done).
 import { getDoc, updateSession, finishSession, discardSession, isReadOnly } from '../store.js';
 import { workoutLabel } from '../logic.js';
@@ -10,6 +10,7 @@ import { esc } from '../ui.js';
 import { figureOf, mountFigure } from '../figures.js';
 
 const PREP = 5;                       // "Preparati" seconds before the first step
+const WARN = 5;                       // last seconds of a step: a beep each second, colours turn red
 const R = 108;                        // ring radius
 const C = 2 * Math.PI * R;
 
@@ -67,7 +68,7 @@ function saveIdx() {
 
 function cue(changed) {
   if (changed) {
-    tone(st.idx >= st.steps.length ? 660 : 990, 0.45, 0.3);
+    tone(st.idx >= st.steps.length ? 660 : 1320, 0.5, 0.8);
     navigator.vibrate?.(250);
   }
 }
@@ -92,9 +93,9 @@ function step() {
     return;
   }
   const left = r.left;
-  if (left <= 3 && left >= 1 && st.beeped !== left) {
+  if (left <= WARN && left >= 1 && st.beeped !== left) {
     st.beeped = left;
-    tone(660, 0.12, 0.25);
+    tone(880, 0.15, 0.7);
   }
   paint();
 }
@@ -122,7 +123,7 @@ function jump(k) {
   st.leftMs = st.steps[st.idx].sec * 1000;
   st.beeped = 0;
   saveIdx();
-  if (!st.paused) tone(990, 0.3, 0.25);
+  if (!st.paused) tone(1320, 0.3, 0.6);
   paint();
 }
 
@@ -207,7 +208,7 @@ function paint() {
   const ph = phase(x, rounds);
   box.dataset.phase = ph.key;
   box.classList.toggle('paused', st.paused);
-  box.classList.toggle('last', !st.paused && left <= 3);
+  box.classList.toggle('last', !st.paused && left <= WARN);
   box.querySelector('.tr-phase').textContent = ph.text;
   // During a pause (and the start) the next exercise is announced: its name, "Prossimo" and its note.
   let k = st.idx;
@@ -291,7 +292,7 @@ export function render(el, { doc, param }) {
           <circle class="tr-ring-fg" cx="120" cy="120" r="${R}" stroke-dasharray="${C}" transform="rotate(-90 120 120)"/></svg>
         <div class="tr-time" role="timer" aria-live="off"></div>
       </div>
-      <p class="tr-hint">Tocca ▶ per iniziare. Alza il volume: senti un bip negli ultimi 3 secondi e a ogni cambio.</p>
+      <p class="tr-hint">Tocca ▶ per iniziare. Alza il volume e togli il silenzioso: senti un bip negli ultimi 5 secondi e a ogni cambio.</p>
       <div class="tr-next"></div>
     </div>
     <footer class="tr-foot">

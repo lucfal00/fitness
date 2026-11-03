@@ -7,7 +7,7 @@ Diario di allenamento personale, offline, per iPhone e PC. Nessun account: i dat
 - **Allenamento live**: ogni serie parte da quello che hai fatto l'ultima volta in quello stesso giorno della scheda;
   aggiusti ripetizioni e kg con − e +. Timer di recupero, riscaldamento, superserie, RPE.
 - **Giorni a tempo**: un giorno può essere "A tempo" (riscaldamento, circuito a giri, defaticamento). Lo schermo mostra
-  esercizio, conto alla rovescia e cosa viene dopo, con bip negli ultimi 3 secondi e a ogni cambio; pausa, indietro, salta.
+  esercizio, conto alla rovescia e cosa viene dopo, con bip e colori rossi negli ultimi 5 secondi e un bip a ogni cambio; pausa, indietro, avanti.
 - **Progressi**: record personali, grafici per settimana/mese/6 mesi/anno, mappa muscolare.
 - **Corpo**: peso corporeo e misure.
 - **Libreria esercizi**: circa 125 esercizi, che si possono rinominare o nascondere; puoi anche creare, modificare ed eliminare esercizi tuoi.

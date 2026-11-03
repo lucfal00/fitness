@@ -63,13 +63,18 @@ export function skipRest() {
 
 // ---- Sound ------------------------------------------------------------
 
-/** Create / resume the AudioContext; call from a user gesture (tap on "Inizia"). */
+/** Create / resume the AudioContext; call from a user gesture (tap on "Inizia"). iOS only lets a context play after
+ *  a sound was started inside a gesture, so a silent buffer is played here too. */
 export function unlockAudio() {
   try {
     const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
     if (!AC) return;
     ctx ??= new AC();
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state !== 'running') ctx.resume();
+    const src = ctx.createBufferSource();
+    src.buffer = ctx.createBuffer(1, 1, 22050);
+    src.connect(ctx.destination);
+    src.start(0);
   } catch { /* no sound, visual cue only */ }
 }
 
@@ -152,6 +157,7 @@ if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     requestLock();
+    if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});   // iOS suspends ("interrupted") audio in the background
     check();                          // recompute from the end timestamp after backgrounding
   });
 }

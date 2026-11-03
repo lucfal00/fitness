@@ -581,6 +581,7 @@ body.timer-on main { padding: 0; max-width: none; }
 .tr-ring-fg { stroke: var(--ph); stroke-linecap: round; transition: stroke-dashoffset .2s linear, stroke .5s ease; }
 .tr-time { position: absolute; inset: 0; display: grid; place-items: center; font-size: clamp(3.2rem, 17vw, 5.4rem); font-weight: 800;
   font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.tr.last { --ph: #ef4444; }                       /* last seconds: colours turn red, the background keeps its phase */
 .tr.last .tr-time { color: var(--ph); animation: tr-pulse 1s ease-in-out infinite; }
 .tr.paused .tr-time { opacity: .55; }
 @keyframes tr-pulse { 50% { transform: scale(1.06); } }

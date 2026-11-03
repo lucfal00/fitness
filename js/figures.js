@@ -188,15 +188,14 @@ export function mountFigure(box, fig) {
     return out;
   });
   const seq = fig.cycle ? fig.k.map((_, n) => n) : [0, 1];
-  const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const frame = (t) => {
     if (!views[0].svg.isConnected) return;
-    const ph = still ? 0 : t / fig.ms;
+    const ph = t / fig.ms;              // always animated (also with "Reduce motion"): the movement is the explanation
     const n = Math.floor(ph) % seq.length;
     const f = ph - Math.floor(ph);
     const e = (1 - Math.cos(Math.PI * f)) / 2;
     for (const { v, paint } of views) paint(lerp(v.k[seq[n]], v.k[seq[(n + 1) % seq.length]], e));
-    if (!still) requestAnimationFrame(frame);
+    requestAnimationFrame(frame);
   };
   for (const { v, paint } of views) paint(v.k[0]);
   requestAnimationFrame(frame);
