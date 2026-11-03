@@ -3,6 +3,7 @@
 
 import { isConcluded } from './logic.js';
 import { resolveExercise } from './library.js';
+import { isTimed, timerMinutes } from './interval.js';
 
 const round1 = (x) => Math.round(x * 10) / 10;
 const round2 = (x) => Math.round(x * 100) / 100;
@@ -207,8 +208,9 @@ export function pace(sec, km) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-/** Estimated duration of a template in minutes, rounded to 5 (§6.9). */
+/** Estimated duration of a template in minutes, rounded to 5 (§6.9); a timed day gives its exact length. */
 export function estimateMinutes(doc, template, restDefault) {
+  if (isTimed(template)) return timerMinutes(template);
   const blocks = []; // strength groups: arrays of items; cardio/sport: { sec }
   let prevGroup = null;
   for (const it of template.items) {

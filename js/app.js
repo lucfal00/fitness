@@ -4,6 +4,7 @@ import { todayKey } from './logic.js';
 import { initTooltips, hideTip } from './charts.js';
 import * as today from './views/today.js';
 import * as session from './views/session.js';
+import * as timerRun from './views/timer-run.js';
 import * as templates from './views/templates.js';
 import * as schedaEdit from './views/scheda-edit.js';
 import * as dayEdit from './views/template-edit.js';
@@ -22,11 +23,11 @@ const scheda = {
   },
 };
 const views = {
-  oggi: today, sessione: session, schede: templates, scheda,
+  oggi: today, sessione: session, timer: timerRun, schede: templates, scheda,
   esercizi: exercises, progressi: progress, esercizio: exerciseDetail, corpo: body, impostazioni: settings,
 };
 const TAB_OF = {                                                    // screens without their own tab
-  sessione: 'oggi', scheda: 'schede', esercizi: 'schede', esercizio: 'progressi', corpo: 'progressi',
+  sessione: 'oggi', timer: 'oggi', scheda: 'schede', esercizi: 'schede', esercizio: 'progressi', corpo: 'progressi',
 };
 const main = document.getElementById('view');
 const banner = document.getElementById('banner');
@@ -84,7 +85,7 @@ store.load();
 store.onChange((e) => {
   // The live session redraws only the row that changed (keeps input focus).
   const { name, param } = route();
-  if (e.detail?.kind === 'session' && name === 'sessione' && param === e.detail.id) return;
+  if (e.detail?.kind === 'session' && (name === 'sessione' || name === 'timer') && param === e.detail.id) return;
   render();
 });
 // Sync status only redraws the screen that shows it, so background syncs never reset an open form.

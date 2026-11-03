@@ -81,6 +81,25 @@ export function beep() {
   } catch { /* ignore */ }
 }
 
+/** One tone (Hz, seconds) for the timed workout; silent when audio is locked or unavailable. */
+export function tone(freq = 880, dur = 0.15, vol = 0.25) {
+  try {
+    if (!ctx) return;
+    const go = () => {
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(vol, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + dur);
+    };
+    if (ctx.state !== 'running') ctx.resume()?.then(go, () => {}); else go();
+  } catch { /* ignore */ }
+}
+
 function play() {
   try {
     for (const at of [0, 0.25]) {

@@ -581,3 +581,21 @@ test('wake lock: off-on during a refused request re-requests once, refusal does 
     assert.equal(l.released, 1);
   });
 });
+
+test('store: timed day saves its type and starts a timed session; switching back to normal clears it', async () => {
+  const s = await freshStore(memStorage());
+  const sid = s.saveScheda({ name: 'HIIT' });
+  const items = [
+    { ex: 'lib_burpee', part: 'main', group: null, note: '', rest: 20, sets: [{ sec: 40 }, { sec: 40 }] },
+    { ex: 'lib_plank', part: 'cool', group: null, note: '', rest: 0, sets: [{ sec: 60 }] },
+  ];
+  const tid = s.addSchedaDay(sid, { dayName: 'Circuito', items, mode: 'timer', rounds: '2', roundRest: -5 });
+  const t = s.getDoc().templates.find((x) => x.id === tid);
+  assert.deepEqual([t.mode, t.rounds, t.roundRest], ['timer', 2, 0]);
+  const id = s.startSession({ tpl: tid });
+  const sess = s.getDoc().sessions.find((x) => x.id === id);
+  assert.equal(sess.mode, 'timer');
+  assert.deepEqual(sess.items.map((it) => [it.part, it.sets.map((x) => [x.sec, x.done])]), [['main', [[40, false], [40, false]]], ['cool', [[60, false]]]]);
+  s.saveSchedaDay(tid, { mode: 'normal', items: [] });
+  assert.deepEqual([t.mode, t.rounds, t.roundRest], [undefined, undefined, undefined]);
+});

@@ -4,6 +4,7 @@ import {
   emptyDoc, newId, todayKey, fromKey, isScheda, isDate, lastSessionOf,
 } from './logic.js';
 import { validateDoc, mergeDocs } from './merge.js';
+import { isTimed } from './interval.js';
 import { SyncError, connect, syncOnce } from './sync.js';
 import { safeColor } from './ui.js';
 
@@ -325,31 +326,51 @@ export function saveScheda(f) {
   return id;
 }
 
-/** Append a day (template) to the scheda's rotation; dayName defaults to "Giorno n". Returns the template id. */
-export function addSchedaDay(schedaId, { dayName, items = [] } = {}) {
+/** Day type fields: mode 'timer' with rounds (1–99) and roundRest (0–3600 s), or a normal day (fields removed). */
+function setMode(t, { mode, rounds, roundRest }) {
+  if (mode === undefined) return;
+  if (mode === 'timer') {
+    Object.assign(t, {
+      mode: 'timer',
+      rounds: Math.min(99, Math.max(1, Math.round(Number(rounds)) || 1)),
+      roundRest: Math.min(3600, Math.max(0, Math.round(Number(roundRest)) || 0)),
+    });
+  } else {
+    delete t.mode;
+    delete t.rounds;
+    delete t.roundRest;
+  }
+}
+
+/** Append a day (template) to the scheda; dayName defaults to "Giorno n"; mode / rounds / roundRest as in setMode.
+ *  Returns the template id. */
+export function addSchedaDay(schedaId, { dayName, items = [], ...type } = {}) {
   if (readOnly) return null;
   const p = liveScheda(schedaId);
   if (!p) return null;
   const name = cleanText(dayName) || nextDayName(p.id);
   const id = newId('t_');
   const t = now();
-  doc.templates.push({
+  const tpl = {
     emoji: p.emoji ?? '💪', color: p.color ?? '#2f8f4a', items: clone(items), name: dayLabel(p, name), scheda: p.id, dayName: name,
     id, order: nextOrder(doc.templates), archived: false, deleted: false, updatedAt: t,
-  });
+  };
+  setMode(tpl, type);
+  doc.templates.push(tpl);
   p.seq.push(id);
   p.updatedAt = t;
   save('program', p.id);
   return id;
 }
 
-/** Update a day's name and / or exercises. */
-export function saveSchedaDay(tplId, { dayName, items } = {}) {
+/** Update a day's name, exercises and / or type (mode, rounds, roundRest). */
+export function saveSchedaDay(tplId, { dayName, items, ...type } = {}) {
   if (readOnly) return;
   const t = find(doc.templates, tplId);
   if (!t) return;
   if (cleanText(dayName)) t.dayName = cleanText(dayName);
   if (items !== undefined) t.items = clone(items);
+  setMode(t, type);
   const p = find(doc.programs, t.scheda);
   if (p) t.name = dayLabel(p, t.dayName ?? '');
   t.updatedAt = now();
@@ -434,6 +455,12 @@ const targetSet = (s) => ({
  *  are never looked at. */
 function buildItems(tpl, done) {
   if (!tpl) return [];
+  if (isTimed(tpl)) {                              // timed day: the planned seconds, one set per round (main) or one
+    return tpl.items.map((item) => ({
+      ex: item.ex, group: null, note: item.note ?? '', part: item.part ?? 'main', rest: item.rest ?? 0,
+      sets: item.sets.map((x) => ({ w: false, kg: null, reps: null, sec: x.sec ?? null, km: null, rpe: null, done })),
+    }));
+  }
   const last = lastSessionOf(doc, tpl.id);
   const used = new Set();
   return tpl.items.map((item, i) => {
@@ -466,7 +493,7 @@ export function startSession({ date = todayKey(), tpl = null } = {}) {
   const ts = now();
   doc.sessions.push({
     id, date, start: ts, end: null, tpl: t ? t.id : null, rot: null, rpe: null, note: '',
-    deleted: false, updatedAt: ts, items: buildItems(t, false),
+    deleted: false, updatedAt: ts, items: buildItems(t, false), ...(isTimed(t) ? { mode: 'timer' } : {}),
   });
   save('session', id);
   return id;
@@ -521,7 +548,7 @@ export function finishSession(id, { rpe = null, note = '', updateTemplate = fals
   s.rpe = rpe;
   s.note = note;
   s.updatedAt = s.end;
-  const tpl = updateTemplate ? liveTemplate(s.tpl) : null;
+  const tpl = updateTemplate && s.mode !== 'timer' ? liveTemplate(s.tpl) : null;
   if (tpl) templateFromSession(tpl, s);
   save('session', id);
 }

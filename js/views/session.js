@@ -676,6 +676,10 @@ export function render(el, { doc, param, refresh: appRefresh }) {
     location.replace('#oggi');
     return;
   }
+  if (s.mode === 'timer' && s.end == null) {            // a live timed workout runs in its own screen
+    location.replace(`#timer/${encodeURIComponent(s.id)}`);
+    return;
+  }
   if (sid !== s.id) {
     sid = s.id;
     notes = new Set();

@@ -4,6 +4,7 @@ import {
   choosableDays, choosableList,
 } from '../logic.js';
 import { resolveExercise } from '../library.js';
+import { isTimed } from '../interval.js';
 import { estimateMinutes, sessionVolume, sessionRecords } from '../metrics.js';
 import {
   startSession, finishSession, addPastSession, openSessionId, setBody, isReadOnly, getDoc, getSync, exportBackup,
@@ -17,6 +18,8 @@ const WEEK_MS = 7 * 864e5;
 
 const tplOf = (doc, id) => (id ? doc.templates.find((t) => t.id === id) ?? null : null);
 const sessionHash = (id) => `#sessione/${encodeURIComponent(id)}`;
+/** Live timed workouts open in the timer, everything else in the session screen. */
+const liveHash = (s) => (s.mode === 'timer' && s.end == null ? `#timer/${encodeURIComponent(s.id)}` : sessionHash(s.id));
 
 function look(doc, s) {
   const t = tplOf(doc, s.tpl);
@@ -68,7 +71,9 @@ function schedaCard(doc, p, ro) {
   const btn = (t) => {
     const mins = estimateMinutes(doc, t, doc.settings.rest);
     const n = t.items.length;
-    const meta = `${n} ${n === 1 ? 'esercizio' : 'esercizi'}${mins > 0 ? ` · ~${mins} min` : ''}`;
+    const meta = isTimed(t)
+      ? `⏱ A tempo · ${t.rounds ?? 1} ${(t.rounds ?? 1) === 1 ? 'giro' : 'giri'}${mins > 0 ? ` · ${mins} min` : ''}`
+      : `${n} ${n === 1 ? 'esercizio' : 'esercizi'}${mins > 0 ? ` · ~${mins} min` : ''}`;
     return `<button type="button" class="btn choice-btn day-btn" data-act="start" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>
       <span class="grow"><b>${esc(t.dayName ?? t.name)}</b><small class="muted">${esc(meta)}</small></span>
       ${t.id === lastId ? '<span class="pill">Ultimo fatto</span>' : ''}</button>`;
@@ -89,7 +94,7 @@ function openCard(doc, s) {
   return `<section class="card tpl-card live" style="--c:${l.color}">
     <div class="head"><span class="badge" aria-hidden="true">${esc(l.emoji)}</span>
       <div class="grow"><b>${esc(l.name)}</b><small class="muted">${esc(since)} · ${done}/${total} serie</small></div>
-      <a class="btn primary" href="${sessionHash(s.id)}">Riprendi</a></div>
+      <a class="btn primary" href="${liveHash(s)}">Riprendi</a></div>
   </section>`;
 }
 
@@ -154,7 +159,7 @@ function openPicker(doc, today) {
 
 function begin(tpl) {
   const id = startSession({ date: todayKey(), tpl });
-  if (id != null) location.hash = sessionHash(id);
+  if (id != null) location.hash = liveHash(getDoc().sessions.find((s) => s.id === id));
 }
 
 /** Start a live workout; with one already open on this device: resume it or finish it first. */
@@ -178,7 +183,7 @@ function start(tpl) {
     const m = e.target.closest('button[data-m]')?.dataset.m;
     if (!m) return;
     close();
-    if (m === 'resume') location.hash = sessionHash(openId);
+    if (m === 'resume') location.hash = liveHash(s);
     else if (m === 'end') {
       finishSession(openId, {});
       skipRest();

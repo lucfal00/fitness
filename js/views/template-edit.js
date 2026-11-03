@@ -1,9 +1,11 @@
-// "Giorno" (#scheda/<id>/giorno/<tplId|nuovo>): day editor of a scheda (items, sets, supersets), with validation.
+// "Giorno" (#scheda/<id>/giorno/<tplId|nuovo>): day editor of a scheda, with validation. A day is "Normale" (items, sets,
+// supersets) or "A tempo" (rounds, round rest, warm-up / circuit / cool-down items with duration and pause after).
 import { resolveExercise, listExercises } from '../library.js';
 import {
   getDoc, saveSchedaDay, addSchedaDay, nextDayName, isReadOnly,
 } from '../store.js';
 import { isScheda } from '../logic.js';
+import { isTimed, PARTS, PART_LABELS, timerMinutes } from '../interval.js';
 import { esc, fmtKg, fmtDuration, parseNum } from '../ui.js';
 import {
   openSheet, openExerciseSheet, filterBar, bindFilterBar, filterExercises, exerciseMeta,
@@ -62,8 +64,16 @@ function toRow(s, shape) {
 }
 
 function fromTemplate(doc, t, key) {
+  if (isTimed(t)) {
+    return {
+      key, id: t.id, name: t.dayName ?? t.name, mode: 'timer', rounds: String(t.rounds ?? 1), roundRest: String(t.roundRest ?? 0),
+      items: t.items.map((it) => ({
+        ex: it.ex, part: it.part ?? 'main', sec: String(it.sets?.[0]?.sec ?? ''), rest: String(it.rest ?? 0), note: it.note ?? '',
+      })),
+    };
+  }
   return {
-    key, id: t.id, name: t.dayName ?? t.name,
+    key, id: t.id, name: t.dayName ?? t.name, mode: 'normal', rounds: '3', roundRest: '60',
     items: t.items.map((it, i) => {
       const shape = shapeOf(doc, it.ex);
       return {
@@ -79,6 +89,7 @@ function fromTemplate(doc, t, key) {
 
 const blank = (key, p) => ({
   key, id: null, name: nextDayName(p.id), items: [],      // same default as the store gives a day saved without a name
+  mode: 'normal', rounds: '3', roundRest: '60',
 });
 
 function newItem(doc, ex) {
@@ -92,6 +103,21 @@ function newItem(doc, ex) {
     sport: [{ dur: '' }],
   }[shape];
   return { ex, link: false, rest: isStrength(shape) ? String(doc.settings.rest) : '', note: '', sets };
+}
+
+const TIMED_DEFAULTS = { warm: ['60', '0'], main: ['40', '20'], cool: ['60', '0'] };
+
+/** Draft item of a timed day. */
+function timedItem(ex, part, note = '') {
+  const [sec, rest] = TIMED_DEFAULTS[part];
+  return { ex, part, sec, rest, note };
+}
+
+/** Switch the draft between normal and timed, keeping the exercises (with default values) and their notes. */
+function switchMode(doc, d, mode) {
+  if (d.mode === mode) return;
+  d.items = d.items.map((it) => (mode === 'timer' ? timedItem(it.ex, 'main', it.note) : { ...newItem(doc, it.ex), note: it.note }));
+  d.mode = mode;
 }
 
 /** Linked-to-next flags only count between two strength items. */
@@ -121,6 +147,7 @@ function validate(doc, d) {
   const name = d.name.trim();
   if (!name) out.push('Inserisci il nome del giorno.');
   else if (name.length > 40) out.push('Il nome può avere al massimo 40 caratteri.');
+  if (d.mode === 'timer') return out.concat(validateTimed(doc, d));
   if (!d.items.length) out.push('Aggiungi almeno un esercizio.');
   d.items.forEach((it) => {
     const shape = shapeOf(doc, it.ex);
@@ -149,8 +176,34 @@ function validate(doc, d) {
   return out;
 }
 
-/** Day fields the form edits: name and exercises (the look comes from the scheda). */
+const isInt = (s) => INT.test(s.trim());
+
+function validateTimed(doc, d) {
+  const out = [];
+  if (!posInt(d.rounds) || Number(d.rounds) > 99) out.push('I giri devono essere da 1 a 99.');
+  if (!isInt(d.roundRest) || Number(d.roundRest) > 3600) out.push('La pausa tra i giri deve essere da 0 a 3600 secondi.');
+  if (!d.items.some((it) => it.part === 'main')) out.push('Aggiungi almeno un esercizio al circuito.');
+  d.items.forEach((it) => {
+    const label = resolveExercise(doc, it.ex)?.name ?? 'Esercizio';
+    if (!posInt(it.sec) || Number(it.sec) > 3600) out.push(`${label}: la durata deve essere da 1 a 3600 secondi.`);
+    else if (!isInt(it.rest) || Number(it.rest) > 3600) out.push(`${label}: la pausa deve essere da 0 a 3600 secondi.`);
+  });
+  return out;
+}
+
+/** Fields of a timed day: items grouped warm-up, circuit, cool-down; circuit items get one set per round. */
+function buildTimed(d) {
+  const rounds = Number(d.rounds);
+  const items = PARTS.flatMap((part) => d.items.filter((it) => it.part === part)).map((it) => ({
+    ex: it.ex, group: null, part: it.part, note: it.note.trim(), rest: Number(it.rest),
+    sets: Array.from({ length: it.part === 'main' ? rounds : 1 }, () => ({ sec: Number(it.sec) })),
+  }));
+  return { dayName: d.name.trim(), items, mode: 'timer', rounds, roundRest: Number(d.roundRest) };
+}
+
+/** Day fields the form edits: name, type and exercises (the look comes from the scheda). */
 function buildFields(doc, d) {
+  if (d.mode === 'timer') return buildTimed(d);
   let n = 0;
   let cur = null;
   const items = d.items.map((it, i) => {
@@ -170,7 +223,7 @@ function buildFields(doc, d) {
       sets: it.sets.map((r) => toSet(r, shape)),
     };
   });
-  return { dayName: d.name.trim(), items };
+  return { dayName: d.name.trim(), items, mode: 'normal' };
 }
 
 // ---- Rendering --------------------------------------------------------------
@@ -225,6 +278,48 @@ function itemCard(doc, d, it, i) {
   </section>`;
 }
 
+function timedCard(doc, d, it, i) {
+  const ex = resolveExercise(doc, it.ex);
+  const same = d.items.map((x, k) => (x.part === it.part ? k : -1)).filter((k) => k >= 0);
+  const pos = same.indexOf(i);
+  return `<section class="card tpl-ex timed-ex part-${it.part}" data-item="${i}">
+    <div class="ex-head"><span class="grow"><b>${esc(ex?.name ?? 'Esercizio rimosso')}</b></span>
+      <button type="button" class="icon-btn small" data-act="up" data-i="${i}" aria-label="Sposta su" ${pos === 0 ? 'disabled' : ''}>↑</button>
+      <button type="button" class="icon-btn small" data-act="down" data-i="${i}" aria-label="Sposta giù" ${pos === same.length - 1 ? 'disabled' : ''}>↓</button>
+      <button type="button" class="icon-btn small" data-act="del" data-i="${i}" aria-label="Rimuovi esercizio">✕</button></div>
+    <div class="two">
+      <label class="field">Durata (s)${input(`data-i="${i}" data-k="sec" inputmode="numeric"`, it.sec)}</label>
+      <label class="field">Pausa dopo (s)${input(`data-i="${i}" data-k="rest" inputmode="numeric"`, it.rest)}</label>
+    </div>
+  </section>`;
+}
+
+/** Total minutes of the draft, counting only valid values. */
+function draftMinutes(d) {
+  const ok = (v, fallback) => (isInt(v) ? v : fallback);
+  return timerMinutes(buildTimed({
+    ...d, rounds: posInt(d.rounds) ? d.rounds : '1', roundRest: ok(d.roundRest, '0'),
+    items: d.items.filter((it) => posInt(it.sec)).map((it) => ({ ...it, rest: ok(it.rest, '0') })),
+  }));
+}
+
+/** Form body of a timed day: rounds and round rest, then the three parts. */
+function timedBody(doc, d) {
+  const mins = draftMinutes(d);
+  return `<div class="card form">
+      <div class="two">
+        <label class="field">Giri del circuito${input('data-f="rounds" inputmode="numeric"', d.rounds)}</label>
+        <label class="field">Pausa tra i giri (s)${input('data-f="roundRest" inputmode="numeric"', d.roundRest)}</label>
+      </div>
+      <small class="muted">Riscaldamento e defaticamento si fanno una volta; il circuito si ripete per i giri indicati.<span class="mins">${mins ? ` Durata totale: circa ${mins} min.` : ''}</span></small>
+    </div>
+    ${PARTS.map((part) => `<h2 class="list-title">${PART_LABELS[part]}</h2>
+      ${d.items.map((it, i) => (it.part === part ? timedCard(doc, d, it, i) : '')).join('')}
+      <button type="button" class="btn block" data-act="add" data-part="${part}" style="margin-bottom:12px">+ Aggiungi ${part === 'main' ? 'esercizio' : PART_LABELS[part].toLowerCase()}</button>`).join('')}`;
+}
+
+let pickPart = 'main';
+
 function openPicker() {
   const pf = { q: '', group: '', kind: '' };
   const { box, close } = openSheet('');
@@ -260,7 +355,7 @@ function openPicker() {
 
 function addItem(id) {
   if (!draft) return;
-  draft.items.push(newItem(getDoc(), id));
+  draft.items.push(draft.mode === 'timer' ? timedItem(id, pickPart) : newItem(getDoc(), id));
   refresh();
   document.querySelector('[data-item]:last-of-type')?.scrollIntoView({ block: 'nearest' });
 }
@@ -289,10 +384,15 @@ export function render(el, ctx) {
     <h1 style="margin-bottom:16px">${t ? 'Modifica giorno' : 'Nuovo giorno'}</h1>
     <div class="card form">
       <label class="field">Nome del giorno<input data-f="name" maxlength="40" value="${esc(d.name)}" placeholder="Es. Giorno 1" autocomplete="off"></label>
+      <fieldset><legend>Tipo</legend>
+        <div class="btn-row mode-row">${[['normal', 'Normale'], ['timer', 'A tempo']].map(([m, l]) => `<button type="button" class="btn${d.mode === m ? ' primary' : ''}"
+          data-act="mode" data-m="${m}" aria-pressed="${d.mode === m}">${l}</button>`).join('')}</div>
+        <small class="muted">${d.mode === 'timer' ? 'Esercizi, pause e riscaldamento scorrono a tempo, con avvisi sonori.' : 'Serie, ripetizioni e kg.'}</small>
+      </fieldset>
     </div>
-    <h2 class="list-title">Esercizi</h2>
+    ${d.mode === 'timer' ? timedBody(doc, d) : `<h2 class="list-title">Esercizi</h2>
     ${d.items.map((it, i) => itemCard(doc, d, it, i)).join('')}
-    <button type="button" class="btn block" data-act="add" style="margin-bottom:12px">+ Aggiungi esercizio</button>
+    <button type="button" class="btn block" data-act="add" style="margin-bottom:12px">+ Aggiungi esercizio</button>`}
     <div class="card form">
       <div class="errors" role="alert"></div>
       ${ro ? '<p class="error">Modalità sola lettura: impossibile salvare.</p>' : ''}
@@ -321,6 +421,11 @@ export function render(el, ctx) {
       if (f.s !== undefined) it.sets[+f.s][f.k] = e.target.value;
       else it[f.k] = e.target.value;
     }
+    const mins = el.querySelector('.mins');
+    if (mins && d.mode === 'timer') {
+      const m = draftMinutes(d);
+      mins.textContent = m ? ` Durata totale: circa ${m} min.` : '';
+    }
     status();
   };
 
@@ -330,7 +435,23 @@ export function render(el, ctx) {
     const i = +b.dataset.i;
     const it = d.items[i];
     const { act } = b.dataset;
-    if (act === 'add') { openPicker(); return; }
+    if (act === 'add') {
+      pickPart = b.dataset.part ?? 'main';
+      openPicker();
+      return;
+    }
+    if (act === 'mode') {
+      switchMode(getDoc(), d, b.dataset.m);
+      render(el, ctx);
+      return;
+    }
+    if (d.mode === 'timer' && (act === 'up' || act === 'down')) {
+      const same = d.items.map((x, k) => (x.part === it.part ? k : -1)).filter((k) => k >= 0);
+      const j = same[same.indexOf(i) + (act === 'up' ? -1 : 1)];
+      if (j !== undefined) [d.items[i], d.items[j]] = [d.items[j], d.items[i]];
+      render(el, ctx);
+      return;
+    }
     if (act === 'addset' || act === 'addwarm') {
       const work = it.sets.filter((s) => !s.w);
       const src = { ...(work[work.length - 1] ?? it.sets[it.sets.length - 1] ?? {}) };
