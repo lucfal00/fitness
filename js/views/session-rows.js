@@ -1,7 +1,8 @@
 // Live workout rows: field model per exercise kind, value stepping / parsing, set-row and exercise-card HTML.
 // No DOM access, no storage (testable in Node).
 import { resolveExercise } from '../library.js';
-import { exerciseHistory, suggestSets, pace } from '../metrics.js';
+import { pace } from '../metrics.js';
+import { isConcluded } from '../logic.js';
 import { esc, fmtKg, fmtDuration, parseNum } from '../ui.js';
 
 // ---- Fields -----------------------------------------------------------------
@@ -166,10 +167,8 @@ const toSessionSet = (s) => ({
   rpe: null, done: false, ...(s.tag ? { tag: s.tag } : {}),
 });
 
-/** Sets for an exercise added during the workout: last session's progression, else `count` defaults per kind. */
+/** Sets for an exercise added during the workout: `count` defaults per kind (no memory of other days). */
 export function newSets(doc, exId, count = 3) {
-  const sug = suggestSets(doc, exId, null, doc.settings.kgStep);
-  if (sug.length) return sug.map(toSessionSet);
   const shape = shapeOf(resolveExercise(doc, exId));
   if (shape === 'cardio' || shape === 'sport') return [toSessionSet({})];
   const base = { weight: { reps: 8 }, reps: { reps: 10 }, time: { sec: 30 } }[shape];
@@ -203,10 +202,16 @@ export function warmIndex(item) {
 
 // ---- Previous values ----------------------------------------------------------
 
-/** Sets of exId in the latest concluded session before `session` (by start); null if none. */
+/** Sets of exId in the latest concluded session of the same day (template) before `session` (by start); null if none
+ *  or for a free workout. Other days and schede are never looked at. */
 export function lastSets(doc, session, exId) {
-  const hist = exerciseHistory(doc, exId).filter((h) => h.session.id !== session.id && h.session.start < session.start);
-  return hist.length ? hist[hist.length - 1].item.sets : null;
+  if (session.tpl == null) return null;
+  let last = null;
+  for (const o of doc.sessions) {
+    if (!isConcluded(o) || o.tpl !== session.tpl || o.id === session.id || o.start >= session.start) continue;
+    if (o.items.some((it) => it.ex === exId) && (!last || o.start > last.start)) last = o;
+  }
+  return last ? last.items.find((it) => it.ex === exId).sets : null;
 }
 
 /** Previous set matching set j: same position among warm-ups or among working sets. */

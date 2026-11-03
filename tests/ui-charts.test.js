@@ -61,6 +61,15 @@ test('store: mutations, session lifecycle, import failure', async () => {
   assert.equal(tpl.items[0].sets.length, 3);
   assert.deepEqual(tpl.items[0].sets[0].reps, [8, 10]);
   assert.deepEqual(tpl.items[0].sets[2], { reps: [5, 5], kg: 70 });
+  // next time of the same day: done sets come back as they were done, the others from the targets
+  const again = s.startSession({ tpl: tid });
+  assert.deepEqual(s.getDoc().sessions.find((x) => x.id === again).items[0].sets.map((x) => [x.kg, x.reps, x.done]),
+    [[60, 8, false], [60, 8, false], [70, 5, false]]);
+  s.discardSession(again);
+  const other = s.saveTemplate({ name: 'Other', items: [{ ex: 'lib_panca_piana', sets: [{ reps: [12, 12] }] }] });
+  const o = s.startSession({ tpl: other });                     // another day: no memory of the first one
+  assert.deepEqual(s.getDoc().sessions.find((x) => x.id === o).items[0].sets.map((x) => [x.kg, x.reps]), [[null, 12]]);
+  s.discardSession(o);
   const pid = s.addPastSession({ date: '2026-10-01', tpl: tid, minutes: 45 });
   const past = s.getDoc().sessions.find((x) => x.id === pid);
   assert.equal(past.end - past.start, 45 * 60000);
@@ -68,16 +77,12 @@ test('store: mutations, session lifecycle, import failure', async () => {
   s.setBody('2026-10-28', { kg: 78.4, vita: 84 });
   s.setBody('2026-10-28', { vita: null });
   assert.equal(s.getDoc().body['2026-10-28'].vita, undefined);
-  s.setPlan('2026-11-01', [tid]);
-  s.movePlanned('2026-11-01', '2026-11-02', tid);
-  assert.deepEqual(s.getDoc().plan['2026-11-01'].items, []);
-  assert.deepEqual(s.getDoc().plan['2026-11-02'].items, [tid]);
   const before = JSON.stringify(s.getDoc());
   await assert.rejects(s.importBackup({ text: async () => '{"version":1}' }), /Backup non valido/);
   await assert.rejects(s.importBackup({ text: async () => 'nope' }), /Backup non valido/);
   assert.equal(JSON.stringify(s.getDoc()), before);
-  assert.ok(events.includes('session') && events.includes('plan'));
-  assert.equal(JSON.parse(mem.get('fitness.v1')).templates.length, 1);
+  assert.ok(events.includes('session') && events.includes('template'));
+  assert.equal(JSON.parse(mem.get('fitness.v1')).templates.length, 2);
 });
 
 // Fresh store module per call (cache-busting query) with a controllable fake localStorage.
@@ -137,29 +142,6 @@ test('store: quota failure on save -> read-only, banner persists, later mutation
   assert.equal(s.getDoc().templates.length, n);
 });
 
-test('store: rot on startSession / addPastSession', async () => {
-  const s = await freshStore(memStorage());
-  const item = { ex: 'lib_panca_piana', rest: 90, sets: [{ reps: [8, 10], kg: 60 }] };
-  const a = s.saveTemplate({ name: 'A', items: [item] });
-  const b = s.saveTemplate({ name: 'B', items: [item] });
-  const today = todayKey();
-  const pid = s.saveProgram({ name: 'Rot', kind: 'rotation', seq: [a, b], days: [0, 1, 2, 3, 4, 5, 6] });
-  s.activateProgram(pid, addDays(today, -30));
-  const rotOf = (id) => s.getDoc().sessions.find((x) => x.id === id).rot;
-  const s1 = s.startSession({ tpl: a });
-  assert.deepEqual(rotOf(s1), { p: pid, i: 0 });
-  s.finishSession(s1);
-  const s2 = s.startSession({ tpl: a });                       // next is now b
-  assert.equal(rotOf(s2), null);
-  const s3 = s.startSession({ tpl: b });
-  assert.deepEqual(rotOf(s3), { p: pid, i: 1 });
-  s.discardSession(s2);
-  s.discardSession(s3);
-  assert.deepEqual(rotOf(s.addPastSession({ date: addDays(today, -2), tpl: b })), { p: pid, i: 1 });
-  assert.equal(rotOf(s.addPastSession({ date: addDays(today, -2), tpl: a })), null);
-  assert.equal(rotOf(s.addPastSession({ date: addDays(today, -60), tpl: b })), null);   // before activation
-});
-
 test('store: finishSession ignores ended sessions; exercise names are trimmed to 40', async () => {
   const s = await freshStore(memStorage());
   const sid = s.startSession({});
@@ -172,37 +154,13 @@ test('store: finishSession ignores ended sessions; exercise names are trimmed to
   assert.equal(s.getDoc().exercises.find((e) => e.id === x).name.length, 40);
 });
 
-test('store: concluded program activates as a copy; endProgram future vs active', async () => {
-  const s = await freshStore(memStorage());
-  const today = todayKey();
-  const old = s.saveProgram({ name: 'Old', kind: 'free' });
-  s.activateProgram(old, addDays(today, -20), addDays(today, -10));
-  const used = s.activateProgram(old, today);
-  assert.notEqual(used, old);
-  assert.equal(s.getDoc().programs.find((p) => p.id === old).to, addDays(today, -10));
-  assert.equal(s.getDoc().programs.find((p) => p.id === used).from, today);
-  const fut = s.saveProgram({ name: 'Fut', kind: 'free' });
-  s.activateProgram(fut, addDays(today, 5));
-  s.endProgram(fut);
-  const f = s.getDoc().programs.find((p) => p.id === fut);
-  assert.deepEqual([f.from, f.to], [null, null]);
-  s.endProgram(used);                                          // started today: becomes not activated (never to < from)
-  const u = s.getDoc().programs.find((p) => p.id === used);
-  assert.deepEqual([u.from, u.to], [null, null]);
-  const running = s.saveProgram({ name: 'Run', kind: 'free' });
-  s.activateProgram(running, addDays(today, -3));
-  s.endProgram(running);                                       // started earlier: to = yesterday
-  const r = s.getDoc().programs.find((p) => p.id === running);
-  assert.deepEqual([r.from, r.to], [addDays(today, -3), addDays(today, -1)]);
-});
-
 // ---- Schede ----------------------------------------------------------------
 
 test('store: saveScheda + addSchedaDay build template days in seq order', async () => {
   const s = await freshStore(memStorage());
-  const sid = s.saveScheda({ name: '  Push Pull  ', emoji: '🏋️', color: '#112233', perWeek: 3, days: null });
+  const sid = s.saveScheda({ name: '  Push Pull  ', emoji: '🏋️', color: '#112233' });
   const p = s.getDoc().programs.find((x) => x.id === sid);
-  assert.deepEqual([p.kind, p.name, p.emoji, p.color, p.perWeek, p.days, p.from, p.to], ['rotation', 'Push Pull', '🏋️', '#112233', 3, null, null, null]);
+  assert.deepEqual([p.kind, p.name, p.emoji, p.color, p.from, p.to], ['rotation', 'Push Pull', '🏋️', '#112233', todayKey(), null]);
   assert.deepEqual(p.seq, []);
   const item = { ex: 'lib_panca_piana', rest: 90, sets: [{ reps: [8, 10], kg: 60 }] };
   const a = s.addSchedaDay(sid, { dayName: 'Petto', items: [item] });
@@ -222,17 +180,21 @@ test('store: saveScheda + addSchedaDay build template days in seq order', async 
   const e = s.addSchedaDay(sid);
   assert.equal(s.getDoc().templates.find((t) => t.id === e).dayName, 'Giorno 4');
   s.deleteSchedaDay(e);
-  // update keeps seq / activation; perWeek is clamped, days normalised
-  s.activateProgram(sid, '2026-11-02');
-  s.saveScheda({ id: sid, name: 'Nuova', emoji: '🔥', color: '#445566', perWeek: 99, days: [5, 1, 1, 9] });
+  // update keeps seq; the period is saved, an end before the start is dropped
+  s.saveScheda({ id: sid, name: 'Nuova', emoji: '🔥', color: '#445566', from: '2026-11-02', to: '2026-12-31' });
   const q = s.getDoc().programs.find((x) => x.id === sid);
-  assert.deepEqual([q.name, q.perWeek, q.days, q.seq, q.from], ['Nuova', 7, [1, 5], [a, b, c], '2026-11-02']);
+  assert.deepEqual([q.name, q.seq, q.from, q.to], ['Nuova', [a, b, c], '2026-11-02', '2026-12-31']);
   const ta = s.getDoc().templates.find((t) => t.id === a);
   assert.deepEqual([ta.color, ta.emoji, ta.name, ta.dayName], ['#445566', '🔥', 'Nuova · Petto', 'Petto']);
   assert.equal(s.getDoc().templates.find((t) => t.id === b).name, 'Nuova · Giorno 2');
-  s.saveScheda({ id: sid, name: 'Nuova', emoji: '🔥', color: '#445566', perWeek: 0, days: [] });
+  s.saveScheda({ id: sid, from: '2027-01-10' });                // the old end now precedes the start
   const r = s.getDoc().programs.find((x) => x.id === sid);
-  assert.deepEqual([r.perWeek, r.days], [1, null]);
+  assert.deepEqual([r.from, r.to], ['2027-01-10', null]);
+  s.saveScheda({ id: sid, from: 'nope', to: 'nope' });
+  const r2 = s.getDoc().programs.find((x) => x.id === sid);
+  assert.deepEqual([r2.from, r2.to], [todayKey(), null]);
+  const z = s.saveScheda({ name: 'Z', from: '2026-11-10', to: '2026-11-01' });
+  assert.deepEqual([s.getDoc().programs.find((x) => x.id === z).to], [null]);
 });
 
 test('store: saveSchedaDay, moveSchedaDay, duplicateSchedaDay', async () => {
@@ -305,7 +267,7 @@ test('store: migration wraps loose templates in 1-day schede, is idempotent and 
   for (const [tid, name, emoji, color] of [['t_aaaaaa', 'Push', '🔥', '#aa0000']]) {
     const tpl = docA.templates.find((x) => x.id === tid);
     const p = docA.programs.find((x) => x.id === tpl.scheda);
-    assert.deepEqual([p.kind, p.name, p.emoji, p.color, p.perWeek, p.days, p.from, p.to, p.seq, p.deleted], ['rotation', name, emoji, color, 1, null, null, null, [tid], false]);
+    assert.deepEqual([p.kind, p.name, p.emoji, p.color, p.from, p.to, p.seq, p.deleted], ['rotation', name, emoji, color, todayKey(), null, [tid], false]);
     assert.equal(tpl.dayName, 'Giorno 1');
   }
   assert.equal(docA.templates.find((x) => x.id === 't_cccccc').scheda, undefined);
@@ -319,58 +281,9 @@ test('store: migration wraps loose templates in 1-day schede, is idempotent and 
   assert.equal(writes, 0);
 });
 
-test('store: reactivating a concluded scheda clones its days; the copy is independent', async () => {
-  const s = await freshStore(memStorage());
-  const today = todayKey();
-  const item = { ex: 'lib_panca_piana', rest: 90, sets: [{ reps: [8, 10], kg: 60 }] };
-  const old = s.saveScheda({ name: 'Old', emoji: '🏋️', color: '#112233', perWeek: 3, days: null });
-  const [a, b, c] = ['A', 'B', 'C'].map((n) => s.addSchedaDay(old, { dayName: n, items: [item] }));
-  s.activateProgram(old, addDays(today, -20), addDays(today, -10));
-  const used = s.activateProgram(old, today);
-  assert.notEqual(used, old);
-  const d = s.getDoc();
-  const seqOf = (id) => d.programs.find((p) => p.id === id).seq;
-  const tpl = (id) => d.templates.find((t) => t.id === id);
-  const copies = [...seqOf(used)];
-  assert.equal(copies.length, 3);
-  assert.equal(new Set([a, b, c, ...copies]).size, 6);                       // new ids
-  assert.deepEqual(seqOf(old), [a, b, c]);
-  assert.deepEqual(copies.map((id) => tpl(id).scheda), [used, used, used]);
-  assert.deepEqual(copies.map((id) => tpl(id).dayName), ['A', 'B', 'C']);   // seq in order
-  assert.deepEqual(copies.map((id) => tpl(id).name), ['Old · A', 'Old · B', 'Old · C']);
-  assert.deepEqual([tpl(copies[0]).emoji, tpl(copies[0]).color, tpl(copies[0]).items], ['🏋️', '#112233', [item]]);
-  tpl(copies[0]).items[0].sets[0].kg = 1;                                     // deep copy of the items
-  assert.equal(tpl(a).items[0].sets[0].kg, 60);
-  assert.deepEqual([a, b, c].map((id) => tpl(id).scheda), [old, old, old]);
-  // editing the copy leaves the original alone
-  s.moveSchedaDay(copies[1], -1);
-  s.duplicateSchedaDay(copies[0]);
-  s.deleteSchedaDay(copies[2]);
-  s.saveScheda({ id: used, name: 'Copia' });
-  assert.deepEqual(seqOf(old), [a, b, c]);
-  assert.deepEqual([a, b, c].map((id) => tpl(id).deleted), [false, false, false]);
-  assert.equal(d.programs.find((p) => p.id === old).name, 'Old');
-  assert.equal(L.workoutLabel(d, a), 'Old · A');
-  assert.equal(L.workoutLabel(d, copies[0]), 'Copia · A');
-  assert.equal(d.templates.filter((t) => t.scheda === old).length, 3);
-  // deleting the original leaves the copy's days intact
-  s.deleteScheda(old);
-  assert.equal(d.programs.find((p) => p.id === used).deleted, false);
-  assert.deepEqual([copies[0], copies[1]].map((id) => tpl(id).deleted), [false, false]);
-  assert.deepEqual([a, b, c].map((id) => tpl(id).deleted), [true, true, true]);
-  // a non-scheda rotation keeps the plain copy (shared seq, no new templates)
-  const r = s.saveProgram({ name: 'R', kind: 'rotation', seq: [copies[0]] });
-  s.activateProgram(r, addDays(today, -20), addDays(today, -10));
-  const n = d.templates.length;
-  const r2 = s.activateProgram(r, today);
-  assert.notEqual(r2, r);
-  assert.deepEqual(d.programs.find((p) => p.id === r2).seq, [copies[0]]);
-  assert.equal(d.templates.length, n);
-});
-
 test('store: saveScheda guards, color, propagation; day names, moves and labels', async () => {
   const s = await freshStore(memStorage());
-  const sid = s.saveScheda({ name: 'S', emoji: '💪', color: 'red', perWeek: 3, days: null });
+  const sid = s.saveScheda({ name: 'S', emoji: '💪', color: 'red' });
   const d = s.getDoc();
   assert.equal(d.programs.find((p) => p.id === sid).color, '#2f8f4a');           // invalid colour -> default
   const [a, b] = [s.addSchedaDay(sid), s.addSchedaDay(sid)];
@@ -381,7 +294,7 @@ test('store: saveScheda guards, color, propagation; day names, moves and labels'
   // only name / emoji / color reach the day templates
   const tb = d.templates.find((t) => t.id === b);
   tb.updatedAt = 1;
-  s.saveScheda({ id: sid, name: 'S', emoji: '💪', color: '#2f8f4a', perWeek: 5, days: [1, 3, 5] });
+  s.saveScheda({ id: sid, name: 'S', emoji: '💪', color: '#2f8f4a', from: '2026-11-01' });
   assert.equal(tb.updatedAt, 1);
   s.saveScheda({ id: sid, color: 'javascript:1' });
   assert.equal(d.programs.find((p) => p.id === sid).color, '#2f8f4a');
@@ -390,9 +303,10 @@ test('store: saveScheda guards, color, propagation; day names, moves and labels'
   assert.deepEqual([tb.color, tb.updatedAt > 1], ['#0000ff', true]);
   // unknown, deleted or non-rotation ids are no-ops
   assert.equal(s.saveScheda({ id: 'nope', name: 'X' }), null);
-  const free = s.saveProgram({ name: 'F', kind: 'free' });
+  const free = 'p_free';
+  d.programs.push({ id: free, name: 'F', kind: 'free', weeks: [], seq: [], from: null, to: null, deleted: false, updatedAt: 1 });
   const freeBefore = JSON.stringify(d.programs.find((p) => p.id === free));
-  assert.equal(s.saveScheda({ id: free, name: 'X', perWeek: 2 }), null);
+  assert.equal(s.saveScheda({ id: free, name: 'X' }), null);
   assert.equal(JSON.stringify(d.programs.find((p) => p.id === free)), freeBefore);
   s.deleteScheda(sid);
   const deleted = JSON.stringify(d);
@@ -401,7 +315,7 @@ test('store: saveScheda guards, color, propagation; day names, moves and labels'
   assert.equal(d.programs.length, 2);
   // moveSchedaDay accepts only +-1
   const s2 = await freshStore(memStorage());
-  const id2 = s2.saveScheda({ name: 'M', perWeek: 3 });
+  const id2 = s2.saveScheda({ name: 'M' });
   const [x, y, z] = [1, 2, 3].map(() => s2.addSchedaDay(id2));
   const seq2 = () => s2.getDoc().programs.find((p) => p.id === id2).seq;
   s2.moveSchedaDay(x, 2);

@@ -1,10 +1,10 @@
 // "Progressi": one period selector drives the charts; consistency, volume, sets per group, body map, records, cardio.
-import { adherence, weekStreaks, addDays, weekStart, doneCount } from '../logic.js';
+import { weekStreaks, addDays, weekStart, doneCount, isConcluded } from '../logic.js';
 import { heatmap, valueLine, barChart, stackedBars } from '../charts.js';
 import { bodyMap } from '../bodymap.js';
 import { bodyMapLevel, pace } from '../metrics.js';
 import { resolveExercise, GROUPS } from '../library.js';
-import { esc, COLORS, GROUP_LABELS, fmtShort, fmtFull, pct, safeColor } from '../ui.js';
+import { esc, COLORS, GROUP_LABELS, fmtShort, fmtFull, safeColor } from '../ui.js';
 import {
   PERIODS, GROUP_COLORS, periodRange, shiftPeriod, bucketStats, cardioTotals, weekGroupSets, sessionNames, recordSummary, trainedIn,
 } from './progress-data.js';
@@ -21,14 +21,15 @@ const empty = (text) => `<p class="muted">${text}</p>`;
 const bars = (points, unit, aria) => barChart(points, null, ACCENT, unit, aria);
 
 function costanza(doc, r, today) {
-  const a = adherence(doc, r.from, r.to, today);
+  const end = r.to < today ? r.to : today;
+  const n = doc.sessions.filter((s) => isConcluded(s) && s.date >= r.from && s.date <= end).length;
   const st = weekStreaks(doc, today);
   const names = sessionNames(doc);
   const tip = (k, v) => `${fmtFull(k)} · ${v ? names[k].join(', ') : 'nessun allenamento'}`;
   return `<section class="card st-wide"><h2>Costanza</h2>
     <div class="tiles">
-      <div class="card tile"><b>${a == null ? '—' : pct(a)}</b><small>allenamenti<br>previsti fatti</small></div>
-      <div class="card tile"><b>${st.current}</b><small>serie attuale<br>(settimane)</small></div>
+      <div class="card tile"><b>${n}</b><small>allenamenti<br>nel periodo</small></div>
+      <div class="card tile"><b>${st.current}</b><small>settimane di fila<br>con allenamento</small></div>
       <div class="card tile"><b>${st.best}</b><small>record<br>(settimane)</small></div>
     </div>
     <p class="chart-sub">Giorni con allenamento negli ultimi 12 mesi</p>

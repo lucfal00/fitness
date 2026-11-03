@@ -4,7 +4,6 @@ import { todayKey } from './logic.js';
 import { initTooltips, hideTip } from './charts.js';
 import * as today from './views/today.js';
 import * as session from './views/session.js';
-import * as calendar from './views/calendar.js';
 import * as templates from './views/templates.js';
 import * as schedaEdit from './views/scheda-edit.js';
 import * as dayEdit from './views/template-edit.js';
@@ -23,7 +22,7 @@ const scheda = {
   },
 };
 const views = {
-  oggi: today, sessione: session, calendario: calendar, schede: templates, scheda,
+  oggi: today, sessione: session, schede: templates, scheda,
   esercizi: exercises, progressi: progress, esercizio: exerciseDetail, corpo: body, impostazioni: settings,
 };
 const TAB_OF = {                                                    // screens without their own tab
@@ -40,7 +39,7 @@ function route() {
   try {
     param = rest.map(decodeURIComponent).join('/');      // hash split first, then each segment decoded on its own
   } catch { /* malformed escape: no parameter */ }
-  if (name === 'programma') {                 // removed screen: old links go to the schede
+  if (name === 'programma' || name === 'calendario') {     // removed screens: old links go to the schede
     location.replace('#schede');
     return { name: 'schede', param: '' };
   }

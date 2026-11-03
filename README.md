@@ -2,10 +2,10 @@
 
 Diario di allenamento personale, offline, per iPhone e PC. Nessun account: i dati restano sul dispositivo.
 
-- **Pianifica e registra** allenamenti con pesi, corpo libero, cardio e sport. **Schede** con più giorni (Giorno 1, 2, 3…),
-  da fare **N volte a settimana**: la rotazione avanza solo quando ti alleni (se salti, ti viene riproposto lo stesso giorno).
-  Giorni preferiti facoltativi sul calendario, più modifiche per singolo giorno dal calendario.
-- **Allenamento live**: timer di recupero, riscaldamento, superserie, RPE e progressione suggerita.
+- **Schede** con un periodo (inizio, fine facoltativa) e più giorni (Giorno 1, 2, 3…); per ogni esercizio serie, ripetizioni,
+  kg facoltativi e recupero. In **Oggi** trovi le schede in corso e scegli tu quale giorno fare.
+- **Allenamento live**: ogni serie parte da quello che hai fatto l'ultima volta in quello stesso giorno della scheda;
+  aggiusti ripetizioni e kg con − e +. Timer di recupero, riscaldamento, superserie, RPE.
 - **Progressi**: record personali, grafici per settimana/mese/6 mesi/anno, mappa muscolare.
 - **Corpo**: peso corporeo e misure.
 - **Libreria esercizi**: circa 125 esercizi, che si possono rinominare o nascondere; puoi anche creare, modificare ed eliminare esercizi tuoi.

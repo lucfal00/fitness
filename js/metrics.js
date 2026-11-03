@@ -200,64 +200,6 @@ export function sessionRecords(doc, session) {
   return out;
 }
 
-/** Italian decimal comma, e.g. 2.5 -> '2,5'. */
-const itNum = (n) => String(n).replace('.', ',');
-
-/**
- * Suggested values for the sets of an exercise, one per template set (warm-ups copied).
- * Without a template item, one per done working set of the last session. The base is the latest concluded
- * session with at least one done working set; sets beyond the done ones reuse the last done set.
- */
-export function suggestSets(doc, exId, item, kgStep) {
-  const ex = resolveExercise(doc, exId);
-  const kind = ex?.kind ?? 'weight';
-  const tSets = item?.sets ?? [];
-  const hist = exerciseHistory(doc, exId);
-  let lastWork = [];                              // done working sets of the latest session that has any
-  for (let i = hist.length - 1; i >= 0 && !lastWork.length; i--) lastWork = hist[i].item.sets.filter(isWork);
-
-  const fromTemplate = (s) => ({
-    w: !!s.w, kg: s.kg ?? null, reps: s.reps?.[0] ?? null, sec: s.sec ?? null, km: s.km ?? null,
-  });
-  if (!lastWork.length) return tSets.map(fromTemplate);
-
-  const tWork = tSets.filter((s) => !s.w);
-  const lastAt = (i) => lastWork[Math.min(i, lastWork.length - 1)];
-  const targetMax = (i) => tWork[i]?.reps?.[1] ?? lastAt(i).reps;
-  const targetMin = (i) => tWork[i]?.reps?.[0] ?? lastAt(i).reps;
-  const count = tSets.length ? tWork.length : lastWork.length;
-  const hit = lastWork.every((s, i) => s.reps >= targetMax(i));
-  const topKg = Math.max(...lastWork.map((s) => s.kg ?? 0));
-
-  const work = [];
-  for (let i = 0; i < count; i++) {
-    const l = lastAt(i);
-    const out = { w: false, kg: null, reps: null, sec: l.sec ?? null, km: l.km ?? null };
-    if (kind === 'weight') {
-      if (hit) {
-        Object.assign(out, { kg: topKg + kgStep, reps: targetMin(i), tag: `+${itNum(kgStep)} kg` });
-      } else {
-        out.kg = l.kg ?? null;
-        out.reps = Math.min(targetMax(i), (l.reps ?? 0) + 1);
-        if (out.reps > l.reps) out.tag = '+1 rip';
-      }
-    } else if (kind === 'body') {
-      out.kg = l.kg ?? null;
-      if (ex.measure === 'time') {
-        out.sec = (l.sec ?? 0) + 5;
-        out.tag = '+5 s';
-      } else {
-        out.reps = (l.reps ?? 0) + 1;
-        out.tag = '+1 rip';
-      }
-    }
-    work.push(out);
-  }
-  if (!tSets.length) return work;
-  let n = 0;
-  return tSets.map((s) => (s.w ? fromTemplate(s) : work[n++]));
-}
-
 /** Pace 'm:ss' per km; null when km is not > 0. */
 export function pace(sec, km) {
   if (!(km > 0)) return null;

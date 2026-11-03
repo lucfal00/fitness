@@ -57,11 +57,8 @@ function toRow(s, shape) {
   if (shape === 'cardio') return { km: s.km != null ? fmtKg(s.km) : '', dur: s.sec ? fmtDuration(s.sec) : '' };
   if (shape === 'sport') return { dur: s.sec ? fmtDuration(s.sec) : '' };
   if (shape === 'time') return { w, sec: s.sec != null ? String(s.sec) : '' };
-  const [min, max] = s.reps ?? [];
-  return {
-    w, min: min != null ? String(min) : '', max: max != null && max !== min ? String(max) : '',
-    kg: shape === 'reps' && s.kg != null ? fmtKg(s.kg) : '',
-  };
+  const reps = s.reps?.[0];
+  return { w, reps: reps != null ? String(reps) : '', kg: shape === 'reps' && s.kg != null ? fmtKg(s.kg) : '' };
 }
 
 function fromTemplate(doc, t, key) {
@@ -72,7 +69,7 @@ function fromTemplate(doc, t, key) {
       return {
         ex: it.ex,
         link: it.group != null && t.items[i + 1]?.group === it.group,
-        rest: it.rest != null ? String(it.rest) : '',
+        rest: it.rest != null ? String(it.rest) : isStrength(shape) ? String(doc.settings.rest) : '',
         note: it.note ?? '',
         sets: it.sets.map((s) => toRow(s, shape)),
       };
@@ -88,13 +85,13 @@ function newItem(doc, ex) {
   const shape = shapeOf(doc, ex);
   const three = (row) => [0, 1, 2].map(() => ({ ...row }));
   const sets = {
-    reps: three({ w: false, min: '8', max: '10', kg: '' }),
-    repsBody: three({ w: false, min: '10', max: '', kg: '' }),
+    reps: three({ w: false, reps: '10', kg: '' }),
+    repsBody: three({ w: false, reps: '10', kg: '' }),
     time: three({ w: false, sec: '30' }),
     cardio: [{ km: '', dur: '' }],
     sport: [{ dur: '' }],
   }[shape];
-  return { ex, link: false, rest: '', note: '', sets };
+  return { ex, link: false, rest: isStrength(shape) ? String(doc.settings.rest) : '', note: '', sets };
 }
 
 /** Linked-to-next flags only count between two strength items. */
@@ -110,10 +107,10 @@ function toSet(r, shape) {
   }
   if (shape === 'sport') return { sec: parseDur(r.dur) };
   if (shape === 'time') return { ...(r.w ? { w: true } : {}), sec: Number(r.sec) };
-  const min = Number(r.min);
+  const reps = Number(r.reps);
   return {
     ...(r.w ? { w: true } : {}),
-    reps: [min, r.max.trim() ? Number(r.max) : min],
+    reps: [reps, reps],                           // one target; stored as [n, n] like older min–max targets
     ...(shape === 'reps' && r.kg.trim() ? { kg: parseNum(r.kg) } : {}),
   };
 }
@@ -143,11 +140,8 @@ function validate(doc, d) {
       for (const s of it.sets) {
         if (shape === 'time') {
           if (!posInt(s.sec)) { msg = 'i secondi devono essere maggiori di 0.'; break; }
-        } else if (!posInt(s.min)) { msg = 'le ripetizioni devono essere maggiori di 0.'; break; }
-        else if (s.max.trim() && (!posInt(s.max) || Number(s.max) < Number(s.min))) {
-          msg = 'le ripetizioni massime devono essere almeno pari alle minime.';
-          break;
-        } else if (s.kg.trim() && shape === 'reps' && !posNum(s.kg)) { msg = 'i kg devono essere maggiori di 0.'; break; }
+        } else if (!posInt(s.reps)) { msg = 'le ripetizioni devono essere maggiori di 0.'; break; }
+        else if (s.kg.trim() && shape === 'reps' && !posNum(s.kg)) { msg = 'i kg devono essere maggiori di 0.'; break; }
       }
     }
     if (msg) out.push(`${label}: ${msg}`);
@@ -198,14 +192,13 @@ function setRows(it, i, shape) {
     const at = (k) => `data-i="${i}" data-s="${j}" data-k="${k}"`;
     const fields = shape === 'time'
       ? input(`${at('sec')} inputmode="numeric" aria-label="Secondi"`, s.sec, 'placeholder="sec"')
-      : `${input(`${at('min')} inputmode="numeric" aria-label="Ripetizioni minime"`, s.min, 'placeholder="rip."')}
-         ${input(`${at('max')} inputmode="numeric" aria-label="Ripetizioni massime (facoltative)"`, s.max, 'placeholder="max"')}
+      : `${input(`${at('reps')} inputmode="numeric" aria-label="Ripetizioni"`, s.reps, 'placeholder="rip."')}
          ${shape === 'reps' ? input(`${at('kg')} inputmode="decimal" aria-label="Chilogrammi (facoltativi)"`, s.kg, 'placeholder="kg"') : ''}`;
-    return `<div class="tset n${shape === 'reps' ? 3 : shape === 'time' ? 1 : 2}">${lbl}${fields}
+    return `<div class="tset n${shape === 'reps' ? 2 : 1}">${lbl}${fields}
       <button type="button" class="icon-btn small" data-act="delset" data-i="${i}" data-s="${j}" aria-label="Rimuovi serie ${j + 1}">✕</button></div>`;
   }).join('');
   const cap = shape === 'time' ? 'Secondi per serie'
-    : `Ripetizioni (min e max; senza max sono fisse)${shape === 'reps' ? ' · kg iniziali facoltativi' : ''}`;
+    : shape === 'reps' ? 'Ripetizioni e kg (kg facoltativi)' : 'Ripetizioni';
   return `<small class="muted">${cap}</small>${rows}
     <div class="btn-row"><button type="button" class="btn small" data-act="addset" data-i="${i}">+ Serie</button>
       <button type="button" class="btn small" data-act="addwarm" data-i="${i}">+ Riscaldamento</button></div>`;
@@ -225,7 +218,7 @@ function itemCard(doc, d, it, i) {
       <button type="button" class="icon-btn small" data-act="down" data-i="${i}" aria-label="Sposta giù" ${i === n - 1 ? 'disabled' : ''}>↓</button>
       <button type="button" class="icon-btn small" data-act="del" data-i="${i}" aria-label="Rimuovi esercizio">✕</button></div>
     ${setRows(it, i, shape)}
-    ${isStrength(shape) ? `<label class="field">Recupero (s)${input(`data-i="${i}" data-k="rest" inputmode="numeric"`, it.rest, 'placeholder="predefinito"')}</label>` : ''}
+    ${isStrength(shape) ? `<label class="field">Recupero tra le serie (secondi)${input(`data-i="${i}" data-k="rest" inputmode="numeric"`, it.rest, `placeholder="${doc.settings.rest}"`)}</label>` : ''}
     <label class="field">Nota${input(`data-i="${i}" data-k="note" maxlength="120"`, it.note, 'autocomplete="off"')}</label>
     ${canLink(doc, d.items, i) ? `<label class="switch-row"><span>Unisci al successivo (superserie)</span>
       <span class="switch"><input type="checkbox" data-i="${i}" data-k="link" ${it.link ? 'checked' : ''}><span></span></span></label>` : ''}

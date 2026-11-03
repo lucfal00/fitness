@@ -1,4 +1,4 @@
-// Pure logic: dates, programs, planned workouts, rotation, adherence, streaks.
+// Pure logic: dates, schede, last workout of a day, weekly streaks.
 // No DOM, no storage. Dates are local 'YYYY-MM-DD' keys (string order = date order).
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -46,10 +46,6 @@ export function addMonths(key, n) {
 /** Valid 'YYYY-MM-DD' calendar key. */
 export const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && toKey(fromKey(s)) === s;
 
-function* days(from, to) {
-  for (let k = from; k <= to; k = addDays(k, 1)) yield k;
-}
-
 // ---- Document ----------------------------------------------------------
 
 /** Prefix + 6 random base36 characters. */
@@ -75,147 +71,39 @@ const concluded = (doc) => doc.sessions.filter(isConcluded);
 /** Number of concluded sessions on day d. */
 export const doneCount = (doc, d) => concluded(doc).filter((s) => s.date === d).length;
 
-/** A concluded session of the same template exists on day d. */
-export const isPlannedDone = (doc, d, tplId) => concluded(doc).some((s) => s.date === d && s.tpl === tplId);
+// ---- Schede ------------------------------------------------------------
+// A scheda is a rotation program: name, look, days (templates ordered by seq), period from..to (to optional).
+// Several schede may run at the same time; the user picks the day each time.
 
-// ---- Programs ----------------------------------------------------------
-
-/** Non-deleted program with from <= d <= to (or open-ended), latest from wins. */
-export function activeProgram(doc, d) {
-  let best = null;
-  for (const p of doc.programs) {
-    if (p.deleted || p.from == null || p.from > d || (p.to != null && d > p.to)) continue;
-    if (!best || p.from > best.from) best = p;
-  }
-  return best;
-}
-
-/** Patches {id, from, to} to apply when program `id` is activated from `from` (§6.1). */
-export function activationPatches(doc, id, from, to = null) {
-  const patches = [];
-  for (const p of doc.programs) {
-    if (p.id === id || p.deleted || p.from == null) continue;
-    if (p.from < from && (p.to == null || p.to >= from)) patches.push({ id: p.id, from: p.from, to: addDays(from, -1) });
-    else if (p.from >= from) patches.push({ id: p.id, from: null, to: null });
-  }
-  patches.push({ id, from, to });
-  return patches;
-}
-
-// ---- Planned workouts --------------------------------------------------
-
-/** A day can be planned / proposed: live, not archived, with at least one exercise. */
+/** A day can be trained: live, not archived, with at least one exercise. */
 export const usable = (doc, id) => doc.templates.some((t) => t.id === id && !t.archived && !t.deleted && t.items?.length > 0);
 
-const usableIds = (doc, ids) => ids.filter((id) => usable(doc, id));
+export const isScheda = (p) => !!p && !p.deleted && p.kind === 'rotation';
 
-/** Positions of seq (cyclic, starting at idx) whose template is usable. */
-function usablePositions(doc, seq, idx) {
-  const out = [];
-  for (let k = 0; k < seq.length; k++) {
-    const i = (((idx + k) % seq.length) + seq.length) % seq.length;
-    if (usable(doc, seq[i])) out.push(i);
-  }
-  return out;
-}
-
-/** Latest concluded session of rotation program `id`, by start; null if none. */
-function lastRotationSession(doc, id, date = null) {
-  let last = null;
-  for (const s of concluded(doc)) {
-    if (s.rot?.p !== id || (date != null && s.date !== date)) continue;
-    if (!last || s.start > last.start) last = s;
-  }
-  return last;
-}
-
-/** Position in seq of a rotation session's day: its template where it still is (rot.i if it holds it, else the first
- *  occurrence), falling back to rot.i - 1 when the day left the rotation (so "next" = +1 is what now sits at rot.i). Reorders/edits do not skew "next". */
-function rotationPosition(program, session) {
-  const { seq } = program;
-  const at = seq.indexOf(session.tpl);
-  if (at < 0) return session.rot.i - 1;
-  return seq[session.rot.i] === session.tpl ? session.rot.i : at;
-}
-
-/** Next rotation position in seq: first usable one after the last session's day, else 0. */
-export function nextRotationIndex(doc, program) {
-  const len = program.seq.length;
-  const last = lastRotationSession(doc, program.id);
-  const start = last && len ? (rotationPosition(program, last) + 1) % len : 0;
-  const pos = usablePositions(doc, program.seq, start);
-  return pos.length ? pos[0] : start;
-}
-
-function plannedRotation(doc, p, d, today) {
-  if (!p.days?.includes(weekday(d))) return { items: [], count: 0 };
-  if (d < today) return { items: [], count: usablePositions(doc, p.seq, 0).length ? 1 : 0 };
-  const n = nextRotationIndex(doc, p);
-  let start = today;
-  const done = lastRotationSession(doc, p.id, today);
-  if (done) {
-    if (d === today) {
-      const at = rotationPosition(p, done);
-      const pos = usablePositions(doc, p.seq, p.seq.includes(done.tpl) ? at : at + 1);   // day deleted: what now sits there
-      return pos.length ? { items: [p.seq[pos[0]]], count: 1 } : { items: [], count: 0 };
-    }
-    start = addDays(today, 1);
-  }
-  let ahead = 0; // training days from start up to d (exclusive)
-  for (const k of days(start, addDays(d, -1))) {
-    if (doc.plan[k]?.items != null) continue;
-    if (p.days.includes(weekday(k)) && activeProgram(doc, k)?.id === p.id) ahead++;
-  }
-  const pos = usablePositions(doc, p.seq, n);
-  return pos.length ? { items: [p.seq[pos[ahead % pos.length]]], count: 1 } : { items: [], count: 0 };
-}
-
-/** Planned workouts of day d: { items: template ids, count }. */
-export function planned(doc, d, today = todayKey()) {
-  const over = doc.plan[d]?.items;
-  if (over != null) {
-    const items = usableIds(doc, over);
-    return { items, count: items.length };
-  }
-  const p = activeProgram(doc, d);
-  if (!p) return { items: [], count: 0 };
-  if (p.kind === 'week') {
-    const n = p.weeks.length;
-    const k = n ? (Math.floor(diffDays(weekStart(p.from), weekStart(d)) / 7) % n + n) % n : 0;
-    const items = usableIds(doc, p.weeks[k]?.[weekday(d) - 1] ?? []);
-    return { items, count: items.length };
-  }
-  if (p.kind === 'rotation') return plannedRotation(doc, p, d, today);
-  return { items: [], count: 0 };
-}
-
-// ---- Schede ------------------------------------------------------------
-
-/** A scheda is a live rotation program with a weekly target (older week / free / rotation programs are not schede). */
-export const isScheda = (p) => !!p && !p.deleted && p.kind === 'rotation' && p.perWeek > 0;
-
-/** Live days (templates) of a scheda, in rotation order. */
+/** Live days (templates) of a scheda, in order. */
 export const schedaDays = (doc, p) => p.seq.map((id) => doc.templates.find((t) => t.id === id)).filter((t) => t && !t.deleted);
 
-export const isConcludedScheda = (p, today) => p.from != null && p.to != null && p.to < today;
+/** Day d is inside the scheda's period. */
+export const isRunning = (p, d) => p.from != null && p.from <= d && (p.to == null || d <= p.to);
 
-/** { active, others, concluded }: the running scheda (or null), the not concluded rest, the concluded ones (newest first). */
+export const isConcludedScheda = (p, today) => p.to != null && p.to < today;
+
+/** { running, upcoming, concluded }: in progress today (latest start first), starting later, ended (newest first). */
 export function schedaGroups(doc, today) {
   const all = doc.programs.filter(isScheda);
-  const cur = activeProgram(doc, today);
-  const active = isScheda(cur) ? cur : null;
-  const concluded = all.filter((p) => p !== active && isConcludedScheda(p, today)).sort((a, b) => b.to.localeCompare(a.to));
-  const others = all.filter((p) => p !== active && !concluded.includes(p))
-    .sort((a, b) => (a.from == null) - (b.from == null) || a.name.localeCompare(b.name, 'it'));
-  return { active, others, concluded };
+  const running = all.filter((p) => isRunning(p, today)).sort((a, b) => b.from.localeCompare(a.from) || a.name.localeCompare(b.name, 'it'));
+  const concluded = all.filter((p) => isConcludedScheda(p, today)).sort((a, b) => b.to.localeCompare(a.to));
+  const upcoming = all.filter((p) => !running.includes(p) && !concluded.includes(p))
+    .sort((a, b) => (a.from ?? '').localeCompare(b.from ?? '') || a.name.localeCompare(b.name, 'it'));
+  return { running, upcoming, concluded };
 }
 
-/** Days one can choose: { groups: [{ p, days }] (active scheda first, then the others; concluded ones only with
- *  `withConcluded`, for past workouts), loose: live templates without scheda }. */
+/** Days one can choose: { groups: [{ p, days }] (running schede first, then the upcoming ones; concluded ones only with
+ *  `withConcluded`, for past workouts), loose: live templates without scheda }. Only usable days are listed. */
 export function choosableDays(doc, today, { withConcluded = false } = {}) {
-  const { active, others, concluded } = schedaGroups(doc, today);
-  const groups = [active, ...others, ...(withConcluded ? concluded : [])].filter(Boolean)
-    .map((p) => ({ p, days: schedaDays(doc, p).filter((t) => !t.archived) }));
+  const { running, upcoming, concluded } = schedaGroups(doc, today);
+  const groups = [...running, ...upcoming, ...(withConcluded ? concluded : [])]
+    .map((p) => ({ p, days: schedaDays(doc, p).filter((t) => usable(doc, t.id)) }));
   const loose = doc.templates.filter((t) => !t.deleted && !t.archived && !schedaOf(doc, t.id)).sort((a, b) => a.order - b.order);
   return { groups, loose };
 }
@@ -240,112 +128,41 @@ export function workoutLabel(doc, tplId) {
   return p ? `${p.name} · ${t.dayName ?? t.name}` : t.name;
 }
 
-// ---- Adherence and streaks ---------------------------------------------
-
-/** { prev, ok } for day d (≤ today); today is never counted as missed. */
-function dayScore(doc, d, today) {
-  const done = doneCount(doc, d);
-  let prev = planned(doc, d, today).count;
-  const ok = Math.min(prev, done);
-  if (d === today) prev = ok;
-  return { prev, ok };
-}
-
-/** Rotation scheda with a weekly target and no preferred days: scored per week, not per day (§3). */
-const weekly = (p) => isScheda(p) && p.days == null;
-
-/** Program a week belongs to: the one active on its Monday, else the first active day of the week. */
-function weekOwner(doc, w) {
-  for (const d of days(w, addDays(w, 6))) {
-    const p = activeProgram(doc, d);
-    if (p) return p;
+/** Latest concluded session of day template tplId (by start), optionally other than session `except`; null if none. */
+export function lastSessionOf(doc, tplId, except = null) {
+  let last = null;
+  for (const s of concluded(doc)) {
+    if (s.tpl !== tplId || s.id === except) continue;
+    if (!last || s.start > last.start) last = s;
   }
-  return null;
+  return last;
 }
 
-/** Concluded sessions dated lo..hi. */
-const countBetween = (doc, lo, hi) => concluded(doc).filter((s) => s.date >= lo && s.date <= hi).length;
-
-/** Concluded sessions of the week starting w, up to today. */
-function weekDone(doc, w, today) {
-  const end = addDays(w, 6);
-  return countBetween(doc, w, end < today ? end : today);
-}
-
-/** { done, target } of the Monday–Sunday week containing today; target = perWeek of the active scheda, else null. */
-export function weekProgress(doc, today) {
-  const p = activeProgram(doc, today);
-  return { done: weekDone(doc, weekStart(today), today), target: isScheda(p) ? p.perWeek : null };
-}
-
-/** Σ ok / Σ prev over from..to (days ≤ today); null when nothing was planned.
- *  Days of a scheda without preferred days are replaced by weekly scoring (§3). */
-export function adherence(doc, from, to, today) {
-  const end = to < today ? to : today;
-  if (from > end) return null;                    // range entirely in the future
-  let prev = 0;
-  let ok = 0;
-  for (const d of days(from, end)) {
-    if (weekly(activeProgram(doc, d))) continue;
-    const s = dayScore(doc, d, today);
-    prev += s.prev;
-    ok += s.ok;
+/** Day (template id) of the scheda trained most recently, or null. */
+export function lastDayOf(doc, p) {
+  let last = null;
+  for (const s of concluded(doc)) {
+    if (!p.seq.includes(s.tpl)) continue;
+    if (!last || s.start > last.start) last = s;
   }
-  const thisWeek = weekStart(today);
-  for (let w = weekStart(from); w <= end; w = addDays(w, 7)) {
-    if (w < from) continue;                       // a week belongs to the period only if its Monday is inside it
-    const p = weekOwner(doc, w);
-    if (!weekly(p) || p.from == null || w < p.from) continue;   // ... and not before the activation (Monday only)
-    const done = weekDone(doc, w, today);         // the whole week, up to today
-    ok += Math.min(done, p.perWeek);
-    prev += w === thisWeek ? Math.min(done, p.perWeek) : p.perWeek;   // the running week is never missed
-  }
-  return prev ? ok / prev : null;
+  return last ? last.tpl : null;
 }
 
-const plans = (p) => p.kind === 'week' || (p.kind === 'rotation' && p.days != null);
+// ---- Streaks -------------------------------------------------------------
 
-/** Weeks of consecutive full completion: { current, best } (§6.5). */
+/** Weeks in a row with at least one workout: { current, best }; the running week does not break the streak. */
 export function weekStreaks(doc, today) {
-  const dates = concluded(doc).map((s) => s.date);
-  for (const p of doc.programs) if (!p.deleted && p.from != null) dates.push(p.from);
+  const dates = concluded(doc).map((s) => s.date).filter((d) => d <= today);
   if (!dates.length) return { current: 0, best: 0 };
+  const weeks = new Set(dates.map(weekStart));
   const thisWeek = weekStart(today);
-  const status = []; // 'c' complete, 'x' failed, 'i' ignored
-  for (let w = weekStart(dates.reduce((a, b) => (a < b ? a : b))); w <= thisWeek; w = addDays(w, 7)) {
-    const week = [...days(w, addDays(w, 6))];
-    let planning = false;
-    for (const d of week) {
-      const p = activeProgram(doc, d);
-      if (p && plans(p)) planning = true;
-    }
-    const owner = weekOwner(doc, w);
-    let st;
-    if (weekly(owner)) {
-      st = weekDone(doc, w, today) >= owner.perWeek ? 'c' : 'x';
-    } else if (planning) {
-      let S = 0;
-      let O = 0;
-      for (const d of week) {
-        if (d > today) break;
-        const s = dayScore(doc, d, today);
-        S += s.prev;
-        O += s.ok;
-      }
-      st = S === 0 ? 'i' : O === S ? 'c' : 'x';
-    } else {
-      st = week.some((d) => doneCount(doc, d) > 0) ? 'c' : 'x';
-    }
-    if (w === thisWeek && st === 'x') st = 'i';
-    status.push(st);
-  }
   let best = 0;
   let run = 0;
-  for (const st of status) {
-    if (st === 'c') best = Math.max(best, ++run);
-    else if (st === 'x') run = 0;
+  for (let w = weekStart(dates.reduce((a, b) => (a < b ? a : b))); w <= thisWeek; w = addDays(w, 7)) {
+    if (weeks.has(w)) best = Math.max(best, ++run);
+    else if (w !== thisWeek) run = 0;
   }
   let current = 0;
-  for (let i = status.length - 1; i >= 0 && status[i] !== 'x'; i--) if (status[i] === 'c') current++;
+  for (let w = weeks.has(thisWeek) ? thisWeek : addDays(thisWeek, -7); weeks.has(w); w = addDays(w, -7)) current++;
   return { current, best };
 }

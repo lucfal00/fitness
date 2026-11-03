@@ -188,6 +188,10 @@ textarea { resize: vertical; }
 .tpl-card { display: grid; gap: 10px; border-left: 5px solid var(--c, var(--accent)); }
 .tpl-card .head { display: flex; align-items: center; gap: 12px; }
 .tpl-card .head b { display: block; }
+.tpl-card .day-ask { margin: 0; font-size: .9rem; }
+.day-btns { display: grid; gap: 8px; }
+.day-btn { text-align: left; min-height: 52px; }
+.day-btn small { display: block; }
 .tpl-card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .9rem; }
 .badge {
   width: 40px; height: 40px; flex: none; border-radius: 12px;

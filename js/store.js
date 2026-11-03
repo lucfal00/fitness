@@ -1,10 +1,9 @@
 // Persistence: the only module that touches localStorage.
 // Emits 'change' (detail { kind, id }) after data mutations and 'sync' when sync status or the banner changes.
 import {
-  emptyDoc, newId, todayKey, addDays, fromKey, activeProgram, activationPatches, nextRotationIndex, planned, isScheda,
+  emptyDoc, newId, todayKey, fromKey, isScheda, isDate, lastSessionOf,
 } from './logic.js';
 import { validateDoc, mergeDocs } from './merge.js';
-import { suggestSets } from './metrics.js';
 import { SyncError, connect, syncOnce } from './sync.js';
 import { safeColor } from './ui.js';
 
@@ -21,7 +20,7 @@ let syncTimer = 0;
 let syncing = false;
 let syncAgain = false;
 
-/** Give every live, non-archived template a scheda (idempotent). True when anything changed. A template is loose when
+/** Give every live, non-archived template a scheda and every scheda a start date (idempotent). True when anything changed. A template is loose when
  *  its scheda is missing, deleted, or does not list it in seq: if that scheda is live it is appended to its seq (keeping
  *  its dayName), else it is wrapped in a one-day scheda. Archived templates stay loose.
  *  The new scheda id derives from the template id, so devices migrating the same data converge on the same program; when
@@ -55,11 +54,16 @@ function migrateSchede(d) {
     if (same) id = newId('p_');
     d.programs.push({
       id, name: String(tpl.name ?? '').trim().slice(0, 40) || 'Scheda', kind: 'rotation', emoji: tpl.emoji ?? '💪',
-      color: tpl.color ?? '#2f8f4a', perWeek: 1, days: null, weeks: [], seq: [tpl.id], from: null, to: null, deleted: false,
+      color: tpl.color ?? '#2f8f4a', weeks: [], seq: [tpl.id], from: todayKey(), to: null, deleted: false,
       updatedAt: tpl.updatedAt ?? 0,
     });
     tpl.scheda = id;
     if (!tpl.dayName) tpl.dayName = 'Giorno 1';
+    changed = true;
+  }
+  for (const p of d.programs) {                    // period model: every scheda has a start (older ones were "not activated")
+    if (!isScheda(p) || p.from != null) continue;
+    p.from = todayKey();
     changed = true;
   }
   return changed;
@@ -260,91 +264,6 @@ export function duplicateTemplate(id) {
   return copy.id;
 }
 
-// ---- Programs ------------------------------------------------------------
-
-/** Create (no id) or update a program; from / to are kept unless given. Returns the id. */
-export function saveProgram(p) {
-  if (readOnly) return null;
-  const fields = clone(p);
-  const cur = p.id ? find(doc.programs, p.id) : null;
-  if (cur) {
-    Object.assign(cur, fields, { updatedAt: now() });
-    save('program', cur.id);
-    return cur.id;
-  }
-  const id = newId('p_');
-  doc.programs.push({
-    kind: 'free', weeks: [], seq: [], days: null, from: null, to: null, ...fields, id, deleted: false, updatedAt: now(),
-  });
-  save('program', id);
-  return id;
-}
-
-/** Copy of a scheda's live days for program `target`: new ids, same name/items/look, seq remapped in order. */
-function cloneSchedaDays(p, target) {
-  const copies = new Map();
-  for (const tid of p.seq) {
-    const t = find(doc.templates, tid);
-    if (!t || t.deleted || copies.has(tid)) continue;
-    const dayName = t.dayName ?? t.name;
-    const copy = {
-      ...clone(t), id: newId('t_'), scheda: target.id, dayName, name: dayLabel(target, dayName),
-      order: nextOrder(doc.templates), deleted: false, updatedAt: target.updatedAt,
-    };
-    doc.templates.push(copy);
-    copies.set(tid, copy.id);
-  }
-  target.seq = p.seq.filter((tid) => copies.has(tid)).map((tid) => copies.get(tid));
-}
-
-/** Activate from `from` (to optional). A concluded program is activated as a copy (history stays); a concluded scheda
- *  copy gets its own days, so each day belongs to exactly one scheda. Returns the id used. */
-export function activateProgram(id, from, to = null) {
-  if (readOnly) return null;
-  const p = find(doc.programs, id);
-  if (!p) return null;
-  let target = p;
-  if (p.to != null && p.to < todayKey()) {
-    target = { ...clone(p), id: newId('p_'), from: null, to: null, deleted: false, updatedAt: now() };
-    doc.programs.push(target);
-    if (isScheda(p)) cloneSchedaDays(p, target);
-  }
-  const t = now();
-  for (const patch of activationPatches(doc, target.id, from, to)) {
-    const q = find(doc.programs, patch.id);
-    q.from = patch.from;
-    q.to = patch.to;
-    q.updatedAt = t;
-  }
-  save('program', target.id);
-  return target.id;
-}
-
-/** to = yesterday; a program that starts today or later becomes not activated (never to < from). */
-export function endProgram(id) {
-  if (readOnly) return;
-  const p = find(doc.programs, id);
-  if (!p || p.from == null) return;
-  const today = todayKey();
-  if (p.from >= today) {
-    p.from = null;
-    p.to = null;
-  } else {
-    p.to = addDays(today, -1);
-  }
-  p.updatedAt = now();
-  save('program', id);
-}
-
-export function deleteProgram(id) {
-  if (readOnly) return;
-  const p = find(doc.programs, id);
-  if (!p) return;
-  p.deleted = true;
-  p.updatedAt = now();
-  save('program', id);
-}
-
 // ---- Schede ----------------------------------------------------------------
 // A scheda is a rotation program; its days are templates with { scheda, dayName }, ordered by program.seq.
 
@@ -365,27 +284,24 @@ export function nextDayName(schedaId) {
   return `Giorno ${n}`;
 }
 
-function normDays(v) {
-  const out = [...new Set((Array.isArray(v) ? v : []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 7))];
-  return out.length ? out.sort((a, b) => a - b) : null;
-}
-
-/** Create (no id) or update a scheda: name, emoji, color (#rrggbb), perWeek (1–7), days (preferred weekdays or null).
- *  Returns the id; an id that is deleted or not a rotation scheda changes nothing and returns null. */
+/** Create (no id) or update a scheda: name, emoji, color (#rrggbb), from (start date, default today), to (end date or null;
+ *  an end before the start is dropped). Returns the id; an id that is deleted or not a scheda changes nothing and returns null. */
 export function saveScheda(f) {
   if (readOnly) return null;
   const fields = {};
   if ('name' in f) fields.name = cleanText(f.name) || 'Scheda';
   if ('emoji' in f) fields.emoji = f.emoji;
   if ('color' in f) fields.color = safeColor(f.color);
-  if ('perWeek' in f) fields.perWeek = Math.min(7, Math.max(1, Math.round(Number(f.perWeek)) || 1));
-  if ('days' in f) fields.days = normDays(f.days);
+  if ('from' in f) fields.from = isDate(f.from) ? f.from : todayKey();
+  if ('to' in f) fields.to = isDate(f.to) ? f.to : null;
   if (f.id) {
     const cur = liveScheda(f.id);
     if (!cur) return null;
+    if ('from' in fields && !('to' in fields) && cur.to != null && cur.to < fields.from) fields.to = null;
     const look = ({ name, emoji, color }) => [name, emoji, color].join('\n');
     const before = look(cur);
     Object.assign(cur, fields, { updatedAt: now() });
+    if (cur.to != null && cur.to < cur.from) cur.to = null;
     if (look(cur) !== before) {                    // days follow the scheda's name and look, only when they changed
       for (const t of doc.templates) {
         if (t.scheda !== cur.id || t.deleted) continue;
@@ -400,9 +316,11 @@ export function saveScheda(f) {
   }
   const id = newId('p_');
   doc.programs.push({
-    name: 'Scheda', emoji: '💪', color: '#2f8f4a', perWeek: 3, days: null, ...fields,
-    id, kind: 'rotation', weeks: [], seq: [], from: null, to: null, deleted: false, updatedAt: now(),
+    name: 'Scheda', emoji: '💪', color: '#2f8f4a', from: todayKey(), to: null, ...fields,
+    id, kind: 'rotation', weeks: [], seq: [], deleted: false, updatedAt: now(),
   });
+  const made = doc.programs[doc.programs.length - 1];
+  if (made.to != null && made.to < made.from) made.to = null;
   save('program', id);
   return id;
 }
@@ -502,71 +420,52 @@ export function deleteScheda(id) {
   save('program', id);
 }
 
-// ---- Calendar plan ---------------------------------------------------------
-
-function putPlan(d, items) {
-  doc.plan[d] = { items: items ? [...items] : null, t: now() };
-}
-
-/** items replaces the day's planned list ([] = skipped); null restores the program's plan. */
-export function setPlan(d, items) {
-  if (readOnly) return;
-  putPlan(d, items);
-  save('plan', d);
-}
-
-/** Move one planned workout (template id) from one day to another. */
-export function movePlanned(fromDay, toDay, tplId) {
-  if (readOnly) return;
-  if (fromDay === toDay) return;
-  const src = [...planned(doc, fromDay).items];
-  const i = src.indexOf(tplId);
-  if (i >= 0) src.splice(i, 1);
-  const dst = [...planned(doc, toDay).items, tplId];
-  putPlan(fromDay, src);
-  putPlan(toDay, dst);
-  save('plan', toDay);
-}
-
 // ---- Sessions --------------------------------------------------------------
 
-/** Session items from a template, prefilled with the suggested values. */
+const liveTemplate = (id) => (id ? doc.templates.find((t) => t.id === id && !t.deleted) ?? null : null);
+
+/** Session set from a template target: reps = the (single) target, kg / sec / km as planned. */
+const targetSet = (s) => ({
+  w: !!s.w, kg: s.kg ?? null, reps: s.reps?.[0] ?? null, sec: s.sec ?? null, km: s.km ?? null,
+});
+
+/** Session items from a day template. Each set starts from what was done the last time this same day was trained
+ *  (same exercise, same set position, done sets only); otherwise from the template's targets. Other days and schede
+ *  are never looked at. */
 function buildItems(tpl, done) {
   if (!tpl) return [];
-  return tpl.items.map((item) => {
+  const last = lastSessionOf(doc, tpl.id);
+  const used = new Set();
+  return tpl.items.map((item, i) => {
+    let prev = last?.items[i]?.ex === item.ex && !used.has(i) ? i : -1;
+    if (prev < 0) prev = last ? last.items.findIndex((o, k) => o.ex === item.ex && !used.has(k)) : -1;
+    if (prev >= 0) used.add(prev);
+    const before = prev >= 0 ? last.items[prev].sets : [];
     const out = {
       ex: item.ex,
       group: item.group ?? null,
       note: item.note ?? '',
-      sets: suggestSets(doc, item.ex, item, doc.settings.kgStep).map((s) => ({
-        w: !!s.w, kg: s.kg ?? null, reps: s.reps ?? null, sec: s.sec ?? null, km: s.km ?? null,
-        rpe: null, done, ...(s.tag ? { tag: s.tag } : {}),
-      })),
+      sets: item.sets.map((t, j) => {
+        const b = before[j];
+        const v = b?.done && !!b.w === !!t.w
+          ? { w: !!t.w, kg: b.kg ?? null, reps: b.reps ?? null, sec: b.sec ?? null, km: b.km ?? null }
+          : targetSet(t);
+        return { ...v, rpe: null, done };
+      }),
     };
     if (item.rest != null) out.rest = item.rest;
     return out;
   });
 }
 
-const liveTemplate = (id) => (id ? doc.templates.find((t) => t.id === id && !t.deleted) ?? null : null);
-
-/** rot (§6.3): {p, i} when tpl is the next step of the rotation program active on `date`, else null. */
-function rotationFor(date, tpl) {
-  const prog = tpl ? activeProgram(doc, date) : null;
-  if (prog?.kind !== 'rotation' || !prog.seq.length) return null;
-  const i = nextRotationIndex(doc, prog);
-  return prog.seq[i] === tpl ? { p: prog.id, i } : null;
-}
-
-/** New open session; sets rot (§6.3) when it is the next step of the active rotation. Returns the id. */
+/** New open session. Returns the id. */
 export function startSession({ date = todayKey(), tpl = null } = {}) {
   if (readOnly) return null;
   const t = liveTemplate(tpl);
-  const rot = rotationFor(date, t ? t.id : null);
   const id = newId('s_');
   const ts = now();
   doc.sessions.push({
-    id, date, start: ts, end: null, tpl: t ? t.id : null, rot, rpe: null, note: '',
+    id, date, start: ts, end: null, tpl: t ? t.id : null, rot: null, rpe: null, note: '',
     deleted: false, updatedAt: ts, items: buildItems(t, false),
   });
   save('session', id);
@@ -646,7 +545,7 @@ export function addPastSession({ date, tpl = null, minutes = 60 }) {
   const start = d.getTime();
   const id = newId('s_');
   doc.sessions.push({
-    id, date, start, end: start + minutes * 60000, tpl: t ? t.id : null, rot: rotationFor(date, t ? t.id : null), rpe: null, note: '',
+    id, date, start, end: start + minutes * 60000, tpl: t ? t.id : null, rot: null, rpe: null, note: '',
     deleted: false, updatedAt: now(), items: buildItems(t, true),
   });
   save('session', id);

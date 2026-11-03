@@ -1,14 +1,10 @@
-// "Scheda" (#scheda/<id|nuova>): name, look, days, weekly schedule; activate / end; delete.
+// "Scheda" (#scheda/<id|nuova>): name, look, period (start, optional end), days; delete.
 import {
-  saveScheda, duplicateSchedaDay, moveSchedaDay, deleteSchedaDay, deleteScheda, activateProgram, endProgram, isReadOnly,
+  saveScheda, duplicateSchedaDay, moveSchedaDay, deleteSchedaDay, deleteScheda, isReadOnly,
 } from '../store.js';
-import {
-  isScheda, schedaDays, isConcludedScheda, isDate,
-} from '../logic.js';
+import { isScheda, schedaDays, isDate } from '../logic.js';
 import { estimateMinutes } from '../metrics.js';
-import {
-  esc, safeColor, fmtFull, DAY_LETTERS, DAY_NAMES, COLORS,
-} from '../ui.js';
+import { esc, safeColor, COLORS } from '../ui.js';
 import { openSheet } from './exercises.js';
 import { plural } from './templates.js';
 
@@ -35,30 +31,34 @@ function mutate(fn) {
 }
 
 const fromScheda = (p) => ({
-  key: p.id, id: p.id, name: p.name, emoji: p.emoji || '💪', color: safeColor(p.color), perWeek: p.perWeek > 0 ? p.perWeek : 3,
-  days: [...(p.days ?? [])], updatedAt: p.updatedAt ?? null, dirty: false, touched: new Set(),
+  key: p.id, id: p.id, name: p.name, emoji: p.emoji || '💪', color: safeColor(p.color),
+  from: p.from ?? '', to: p.to ?? '', updatedAt: p.updatedAt ?? null, dirty: false, touched: new Set(),
 });
 
-const blank = (doc) => ({
+const blank = (doc, today) => ({
   key: 'nuova', id: null, name: '', emoji: '💪', color: COLORS[doc.programs.filter(isScheda).length % COLORS.length],
-  perWeek: 3, days: [], updatedAt: null, dirty: false, touched: new Set(),
+  from: today, to: '', updatedAt: null, dirty: false, touched: new Set(),
 });
 
 /** A new scheda saves everything; an existing one only the fields that were edited (never a whole stale copy). */
 function buildFields(d) {
   const all = {
-    name: d.name.trim(), emoji: d.emoji.trim() || '💪', color: d.color, perWeek: d.perWeek,
-    days: d.days.length ? [...d.days].sort((a, b) => a - b) : null,
+    name: d.name.trim(), emoji: d.emoji.trim() || '💪', color: d.color, from: d.from, to: d.to || null,
   };
   if (!d.id) return all;
   const f = { id: d.id };
   for (const k of d.touched) f[k] = all[k];
+  if ('from' in f || 'to' in f) Object.assign(f, { from: all.from, to: all.to });   // the period is saved as a pair
   return f;
 }
 
 const validate = (d) => {
+  const out = [];
   const n = d.name.trim().length;
-  return n < 1 || n > 40 ? ['Il nome deve avere da 1 a 40 caratteri.'] : [];
+  if (n < 1 || n > 40) out.push('Il nome deve avere da 1 a 40 caratteri.');
+  if (!isDate(d.from)) out.push('Scegli la data di inizio.');
+  else if (d.to && (!isDate(d.to) || d.to < d.from)) out.push('La data di fine deve essere uguale o successiva all’inizio.');
+  return out;
 };
 
 const SAVE_FAIL = 'Impossibile salvare: la scheda è stata eliminata su un altro dispositivo o l’app è in sola lettura.';
@@ -83,14 +83,6 @@ function dayRow(doc, p, t, i, n, ro) {
     </div></li>`;
 }
 
-/** "Attiva dal …" / "Programmata dal …" / "Conclusa il …" / "Non attiva". */
-function statusText(p, today) {
-  if (p.from == null) return 'Non attiva';
-  if (p.from > today) return `Programmata dal ${fmtFull(p.from)}`;
-  if (p.to != null && p.to < today) return `Conclusa il ${fmtFull(p.to)} (dal ${fmtFull(p.from)})`;
-  return `Attiva dal ${fmtFull(p.from)}${p.to != null ? ` al ${fmtFull(p.to)}` : ''}`;
-}
-
 export function render(el, ctx) {
   const { doc, param, today } = ctx;
   refresh = ctx.refresh;
@@ -99,7 +91,7 @@ export function render(el, ctx) {
     location.hash = '#schede';
     return;
   }
-  if (!draft || draft.key !== param) draft = p ? fromScheda(p) : blank(doc);
+  if (!draft || draft.key !== param) draft = p ? fromScheda(p) : blank(doc, today);
   let stale = false;
   if (p && draft.updatedAt !== (p.updatedAt ?? null)) {         // stored scheda changed while the form is open
     if (own) draft.updatedAt = p.updatedAt ?? null;
@@ -109,20 +101,8 @@ export function render(el, ctx) {
   const d = draft;
   const ro = isReadOnly();
   const days = p ? schedaDays(doc, p) : [];
-  const running = !!p && p.from != null && p.from <= today && (p.to == null || p.to >= today);
-  const scheduled = !!p && p.from != null && p.from > today;
-  const concluded = !!p && isConcludedScheda(p, today);
   const staleBox = stale ? `<div class="card form"><p class="error" role="alert">Questa scheda è stata modificata su un altro dispositivo.</p>
       <button type="button" class="btn" data-act="reload">Ricarica</button></div>` : '';
-
-  const activation = !p ? '' : `<h2 class="list-title">Attivazione</h2>
-    <div class="card form">
-      <p style="margin:0"><b>${esc(statusText(p, today))}</b></p>
-      ${running || scheduled
-    ? `<button type="button" class="btn block" data-act="end" ${ro ? 'disabled' : ''}>${scheduled ? 'Annulla attivazione' : 'Termina ora'}</button>`
-    : `<button type="button" class="btn primary block" data-act="activate">${concluded ? 'Riattiva…' : 'Attiva…'}</button>`}
-      ${running || scheduled ? '' : '<small class="muted act-hint" hidden>Aggiungi almeno un giorno con esercizi per attivare la scheda.</small>'}
-    </div>`;
 
   el.innerHTML = `
     <header class="top"><a class="back" href="#schede">‹ Schede</a></header>
@@ -140,6 +120,15 @@ export function render(el, ctx) {
       </fieldset>
     </div>
 
+    <h2 class="list-title">Periodo</h2>
+    <div class="card form">
+      <div class="two">
+        <label class="field">Inizio<input type="date" data-f="from" value="${esc(d.from)}" required></label>
+        <label class="field">Fine (facoltativa)<input type="date" data-f="to" value="${esc(d.to)}" min="${esc(d.from)}"></label>
+      </div>
+      <small class="muted">Nei giorni del periodo la scheda compare in Oggi. Senza fine resta in corso.</small>
+    </div>
+
     <h2 class="list-title">Giorni</h2>
     <div class="card">
       ${days.length ? `<ul class="rows day-list">${days.map((t, i) => dayRow(doc, p, t, i, days.length, ro)).join('')}</ul>`
@@ -147,19 +136,6 @@ export function render(el, ctx) {
       <button type="button" class="btn block" data-act="addday" style="margin-top:8px">+ Aggiungi giorno</button>
     </div>
 
-    <h2 class="list-title">Programmazione</h2>
-    <div class="card form">
-      <div class="pw-row"><span id="pw-l"><b>Volte a settimana</b></span>
-        <div class="stepper" role="group" aria-labelledby="pw-l">
-          <button type="button" data-act="pw-" aria-label="Meno" ${d.perWeek <= 1 ? 'disabled' : ''}>−</button>
-          <span class="val" aria-live="polite"><b class="pw-val">${d.perWeek}</b></span>
-          <button type="button" data-act="pw+" aria-label="Più" ${d.perWeek >= 7 ? 'disabled' : ''}>+</button></div></div>
-      <fieldset><legend>Giorni preferiti (facoltativi)</legend>
-        <div class="days-row">${DAY_LETTERS.map((L, g) => `<label class="pick"><input type="checkbox" data-day="${g + 1}"
-          ${d.days.includes(g + 1) ? 'checked' : ''} aria-label="${DAY_NAMES[g]}"><span>${L}</span></label>`).join('')}</div>
-        <small class="muted">Solo per vederli sul calendario.</small></fieldset>
-    </div>
-    ${activation}
     <div class="card form" style="margin-top:12px">
       <div class="errors" role="alert"></div>
       ${ro ? '<p class="error">Modalità sola lettura: impossibile salvare.</p>' : ''}
@@ -169,8 +145,6 @@ export function render(el, ctx) {
 
   const save = el.querySelector('[data-act=save]');
   const addDay = el.querySelector('[data-act=addday]');
-  const act = el.querySelector('[data-act=activate]');
-  const hint = el.querySelector('.act-hint');
   const errBox = el.querySelector('.errors');
   const fail = (m) => { errBox.innerHTML = `<p class="error">${esc(m)}</p>`; };
   const status = () => {
@@ -178,11 +152,6 @@ export function render(el, ctx) {
     errBox.innerHTML = msgs.map((m) => `<p class="error">${esc(m)}</p>`).join('');
     save.disabled = ro || msgs.length > 0;
     addDay.disabled = ro || msgs.length > 0;
-    if (act) {
-      const none = !days.some((t) => t.items.length > 0);      // empty days are never proposed
-      act.disabled = ro || msgs.length > 0 || none;
-      hint.hidden = !none;
-    }
   };
   status();
 
@@ -195,43 +164,6 @@ export function render(el, ctx) {
     return id;
   }
 
-  function openActivate() {
-    const { box, close } = openSheet(`<h2>${concluded ? 'Riattiva scheda' : 'Attiva scheda'}</h2>
-      <div class="form"><label class="field">Data di inizio<input type="date" name="from" value="${today}"></label>
-        <p class="error" role="alert" hidden></p></div>
-      <button type="button" class="btn primary center" data-act="go" ${ro ? 'disabled' : ''}>${concluded ? 'Riattiva' : 'Attiva'}</button>
-      <button type="button" class="btn" data-act="cancel">Annulla</button>`);
-    const err = (m) => {
-      const e = box.querySelector('.error');
-      e.textContent = m;
-      e.hidden = false;
-    };
-    box.onclick = (e) => {
-      const b = e.target.closest('button');
-      if (!b) return;
-      if (b.dataset.act === 'cancel') { close(); return; }
-      if (b.dataset.act !== 'go' || validate(d).length) return;
-      const from = box.querySelector('[name=from]').value;
-      if (!isDate(from)) { err('Scegli una data di inizio valida.'); return; }
-      const edited = !d.id || d.touched.size > 0;          // an untouched existing scheda needs no save
-      let id = null;
-      mutate(() => {
-        if (concluded) {                                 // history stays unchanged: the copy is activated (and edited)
-          id = activateProgram(d.id, from, null);
-          if (id != null && edited) saveScheda({ ...buildFields(d), id });
-        } else {
-          id = edited ? saveScheda(buildFields(d)) : d.id;
-          if (id != null) id = activateProgram(id, from, null);
-        }
-      });
-      if (id == null) { err(SAVE_FAIL); return; }
-      close();
-      draft = null;
-      if (location.hash === `#scheda/${encodeURIComponent(id)}`) refresh();
-      else location.hash = `#scheda/${encodeURIComponent(id)}`;
-    };
-  }
-
   el.oninput = el.onchange = (e) => {
     const t = e.target;
     if (t.dataset.f === 'color') {
@@ -239,12 +171,9 @@ export function render(el, ctx) {
     } else if (t.dataset.f) {
       d[t.dataset.f] = t.value;
       touch(t.dataset.f);
+      if (t.dataset.f === 'from') el.querySelector('[data-f=to]').min = t.value;
       if (t.dataset.f === 'emoji') el.querySelectorAll('[data-emoji]').forEach((b) => b.classList.toggle('on', b.dataset.emoji === d.emoji));
       status();
-    } else if (t.dataset.day) {
-      const g = +t.dataset.day;
-      d.days = t.checked ? [...new Set([...d.days, g])] : d.days.filter((x) => x !== g);
-      touch('days');
     }
   };
 
@@ -260,15 +189,8 @@ export function render(el, ctx) {
       return;
     }
     if (a === 'reload') {
-      draft = p ? fromScheda(p) : blank(doc);
+      draft = p ? fromScheda(p) : blank(doc, today);
       refresh();
-    } else if (a === 'pw-' || a === 'pw+') {
-      d.perWeek = Math.min(7, Math.max(1, d.perWeek + (a === 'pw+' ? 1 : -1)));
-      touch('perWeek');
-      el.querySelector('.pw-val').textContent = d.perWeek;
-      el.querySelector('[data-act="pw-"]').disabled = d.perWeek <= 1;
-      el.querySelector('[data-act="pw+"]').disabled = d.perWeek >= 7;
-      if (document.activeElement?.disabled) el.querySelector(a === 'pw+' ? '[data-act="pw-"]' : '[data-act="pw+"]').focus();
     } else if (a === 'addday') {
       if (ro || validate(d).length) return;
       let sid = p?.id ?? null;
@@ -283,10 +205,6 @@ export function render(el, ctx) {
       if (a === 'up' || a === 'down') mutate(() => moveSchedaDay(tid, a === 'up' ? -1 : 1));
       else if (a === 'dup') mutate(() => duplicateSchedaDay(tid));
       else if (confirm('Eliminare questo giorno? Le sessioni già svolte restano nello storico.')) mutate(() => deleteSchedaDay(tid));
-    } else if (a === 'activate') {
-      if (!validate(d).length) openActivate();
-    } else if (a === 'end') {
-      if (!ro && confirm('Terminare ora la scheda?')) mutate(() => endProgram(p.id));
     } else if (a === 'save') {
       if (ro || validate(d).length) return;
       if (p && !d.touched.size) {                        // nothing edited

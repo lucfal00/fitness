@@ -1,7 +1,7 @@
-// "Oggi" (#oggi[/AAAA-MM-DD]): day navigation, week strip, next scheda day, weekly target, open / concluded workouts, body weight.
+// "Oggi" (#oggi[/AAAA-MM-DD]): day navigation, week strip, schede in progress with their days, open / concluded workouts, body weight.
 import {
-  planned, isPlannedDone, activeProgram, nextRotationIndex, todayKey, addDays, weekStart, isConcluded, isDate,
-  weekProgress, workoutLabel, isScheda, usable, choosableDays, choosableList,
+  todayKey, addDays, weekStart, isConcluded, isDate, workoutLabel, isScheda, usable, schedaDays, schedaGroups, lastDayOf,
+  choosableDays, choosableList,
 } from '../logic.js';
 import { resolveExercise } from '../library.js';
 import { estimateMinutes, sessionVolume, sessionRecords } from '../metrics.js';
@@ -9,7 +9,7 @@ import {
   startSession, finishSession, addPastSession, openSessionId, setBody, isReadOnly, getDoc, getSync, exportBackup,
 } from '../store.js';
 import { unlockAudio, skipRest } from '../timer.js';
-import { esc, safeColor, fmtDay, fmtKg, fmtNum, parseNum, DAY_LETTERS } from '../ui.js';
+import { esc, safeColor, fmtDay, fmtKg, fmtNum, parseNum, fmtFull, DAY_LETTERS } from '../ui.js';
 import { openSheet } from './exercises.js';
 import { setCounts, fmtMinutes } from './session-rows.js';
 
@@ -33,35 +33,21 @@ const go = (d, today) => location.replace(d >= today ? '#oggi' : `#oggi/${d}`);
 
 // ---- Week strip -------------------------------------------------------------------
 
-/** Dots of day d: planned (outline) and done (filled), matched by template; at most 4. */
-function dayDots(doc, d, today) {
-  const left = doc.sessions.filter((s) => isConcluded(s) && s.date === d);
-  const p = planned(doc, d, today);
-  const color = (id) => safeColor(tplOf(doc, id)?.color);
-  const dots = [];
-  for (const id of p.items) {
-    const k = left.findIndex((s) => s.tpl === id);
-    dots.push({ c: color(id), done: k >= 0 });
-    if (k >= 0) left.splice(k, 1);
-  }
-  for (let n = p.items.length; n < p.count; n++) {           // past rotation days: only the number is known
-    const s = left.shift();
-    dots.push({ c: color(s?.tpl), done: !!s });
-  }
-  for (const s of left) dots.push({ c: color(s.tpl), done: true });
-  return dots;
+/** Dots of day d: one per concluded workout, in its colour. */
+function dayDots(doc, d) {
+  return doc.sessions.filter((s) => isConcluded(s) && s.date === d).sort((a, b) => a.start - b.start)
+    .map((s) => safeColor(tplOf(doc, s.tpl)?.color));
 }
 
 function weekStrip(doc, day, today) {
   const ws = weekStart(day);
   return `<nav class="week" aria-label="Settimana">${DAY_LETTERS.map((L, k) => {
     const d = addDays(ws, k);
-    const dots = dayDots(doc, d, today);
-    const planned = dots.filter((x) => !x.done).length;
-    const done = dots.length - planned;
-    const label = `${fmtDay(d)}${done ? `, ${done} fatt${done === 1 ? 'o' : 'i'}` : ''}${planned ? `, ${planned} previst${planned === 1 ? 'o' : 'i'}` : ''}`;
+    const dots = dayDots(doc, d);
+    const done = dots.length;
+    const label = `${fmtDay(d)}${done ? `, ${done} fatt${done === 1 ? 'o' : 'i'}` : ''}`;
     const inner = `${L}<b>${+d.slice(8)}</b><span class="dots">${dots.slice(0, 4)
-      .map((x) => `<i class="${x.done ? 'done' : ''}" style="--c:${x.c}"></i>`).join('')}</span>`;
+      .map((c) => `<i class="done" style="--c:${c}"></i>`).join('')}</span>`;
     const cls = `day${d === day ? ' sel' : ''}${d === today ? ' now' : ''}`;
     return d > today
       ? `<span class="${cls} future" aria-label="${esc(label)}">${inner}</span>`
@@ -72,33 +58,27 @@ function weekStrip(doc, day, today) {
 
 // ---- Cards ---------------------------------------------------------------------------
 
-function exerciseList(doc, t) {
-  const names = t.items.map((it) => {
-    const ex = resolveExercise(doc, it.ex);
-    const work = it.sets.filter((s) => !s.w).length;
-    const sets = ex && (ex.kind === 'cardio' || ex.kind === 'sport') ? '' : ` <small>· ${work} serie</small>`;
-    return `<li>${esc(ex?.name ?? 'Esercizio rimosso')}${sets}</li>`;
-  });
-  const more = names.length > 6 ? `<li>+ altri ${names.length - 6}</li>` : '';
-  return names.length ? `<ul>${names.slice(0, 6).join('')}${more}</ul>` : '';
-}
-
-/** Card of a planned (or next rotation) template; action depends on day and status. */
-function tplCard(doc, t, { day, today, kicker, open, ro }) {
-  const done = isPlannedDone(doc, day, t.id);
-  const mins = estimateMinutes(doc, t, doc.settings.rest);
-  const n = t.items.length;
-  const meta = `${n} ${n === 1 ? 'esercizio' : 'esercizi'}${mins > 0 ? ` · ~${mins} min` : ''}`;
-  let action;
-  if (done) action = '<span class="status ok">✓ Fatto</span>';
-  else if (open) action = `<a class="btn primary" href="${sessionHash(open.id)}">Riprendi</a>`;
-  else if (day === today) action = `<button type="button" class="btn primary" data-act="start" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>Inizia</button>`;
-  else action = `<span class="status">Non svolto</span><button type="button" class="btn small" data-act="addpast" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>Registra</button>`;
-  return `<section class="card tpl-card${done ? ' done' : ''}" style="--c:${safeColor(t.color)}">
-    <div class="head"><span class="badge" aria-hidden="true">${esc(t.emoji || '💪')}</span>
-      <div class="grow"><b>${esc(workoutLabel(doc, t.id))}</b><small class="muted">${kicker ? `${esc(kicker)} · ` : ''}${meta}</small></div></div>
-    ${exerciseList(doc, t)}
-    <div class="card-actions">${action}</div>
+/** Scheda in progress: its days as buttons; the one trained last is marked. */
+function schedaCard(doc, p, ro) {
+  const days = schedaDays(doc, p).filter((t) => usable(doc, t.id));
+  const lastId = lastDayOf(doc, p);
+  const last = days.find((t) => t.id === lastId);
+  const sub = [p.to != null ? `fino al ${fmtFull(p.to)}` : 'in corso', last ? `ultimo: ${last.dayName ?? last.name}` : '']
+    .filter(Boolean).join(' · ');
+  const btn = (t) => {
+    const mins = estimateMinutes(doc, t, doc.settings.rest);
+    const n = t.items.length;
+    const meta = `${n} ${n === 1 ? 'esercizio' : 'esercizi'}${mins > 0 ? ` · ~${mins} min` : ''}`;
+    return `<button type="button" class="btn choice-btn day-btn" data-act="start" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>
+      <span class="grow"><b>${esc(t.dayName ?? t.name)}</b><small class="muted">${esc(meta)}</small></span>
+      ${t.id === lastId ? '<span class="pill">Ultimo fatto</span>' : ''}</button>`;
+  };
+  return `<section class="card tpl-card" style="--c:${safeColor(p.color)}">
+    <div class="head"><span class="badge" aria-hidden="true">${esc(p.emoji || '💪')}</span>
+      <div class="grow"><b>${esc(p.name)}</b><small class="muted">${esc(sub)}</small></div>
+      <a class="btn small" href="#scheda/${encodeURIComponent(p.id)}" aria-label="Modifica ${esc(p.name)}">Modifica</a></div>
+    ${days.length ? `<p class="muted day-ask">Che giorno fai?</p><div class="day-btns">${days.map(btn).join('')}</div>`
+    : `<p class="muted">Nessun giorno con esercizi: <a href="#scheda/${encodeURIComponent(p.id)}">aggiungili</a>.</p>`}
   </section>`;
 }
 
@@ -155,11 +135,11 @@ function tplButton(t, label, tag = '') {
 }
 
 /** "Allenati comunque" / "Altro allenamento": schede with their days, or a free workout. */
-function openPicker(doc, today, nextId) {
+function openPicker(doc, today) {
   const { groups, loose } = choosableDays(doc, today);
   const { box, close } = openSheet(`<h2>Scegli l’allenamento</h2>
     ${groups.map(({ p, days }) => `<h3 class="sheet-sub">${esc(p.emoji || '💪')} ${esc(p.name)}</h3>
-      ${days.length ? days.map((t) => tplButton(t, t.dayName ?? t.name, t.id === nextId ? 'Prossimo' : '')).join('')
+      ${days.length ? days.map((t) => tplButton(t, t.dayName ?? t.name)).join('')
     : '<p class="muted">Nessun giorno in questa scheda.</p>'}`).join('')}
     ${loose.map((t) => tplButton(t, t.name)).join('')}
     <button type="button" class="btn choice-btn" data-tpl=""><span class="badge" aria-hidden="true">🏋️</span><span>Allenamento libero</span></button>
@@ -260,76 +240,30 @@ function openAddPast(doc, day, today, preset = null) {
 
 // ---- Render --------------------------------------------------------------------------------
 
-/** "x/N questa settimana": small progress row under the day's card. */
-function weekGoal({ done, target }) {
-  const shown = Math.min(done, target);
-  return `<div class="week-goal"><span><b>${done}/${target}</b> questa settimana${done >= target ? ' ✓' : ''}</span>
-    <span class="bar" role="progressbar" aria-label="Allenamenti della settimana" aria-valuemin="0" aria-valuemax="${target}"
-      aria-valuenow="${shown}"><i style="width:${Math.round((shown / target) * 100)}%"></i></span></div>`;
-}
-
-/** First day after `day` (within two weeks) with a planned workout: { d, id }, else null. */
-function upcoming(doc, day, today) {
-  for (let k = 1; k <= 14; k++) {
-    const d = addDays(day, k);
-    const q = planned(doc, d, today);
-    if (q.count) return { d, id: q.items[0] ?? null };
-  }
-  return null;
-}
-
 export function render(el, { doc, param, today }) {
   const day = dayOf(param, today);
   const ro = isReadOnly();
   const isToday = day === today;
   const title = isToday ? 'Oggi' : day === addDays(today, -1) ? 'Ieri' : fmtDay(day).split(' ')[0];
-  const { groups, loose } = choosableDays(doc, today);
   const openSessions = doc.sessions.filter((s) => !s.deleted && s.end == null).sort((a, b) => b.start - a.start);
   const doneToday = doc.sessions.filter((s) => isConcluded(s) && s.date === day).sort((a, b) => a.start - b.start);
-  const p = planned(doc, day, today);
-  const openFor = (id) => (isToday ? openSessions.find((s) => s.tpl === id && s.date === day) : null);
-
-  // Rotation without training days: suggest the next day of the sequence (today only).
-  const prog = activeProgram(doc, day);
-  const scheda = isScheda(prog) ? prog : null;
-  let next = null;
-  if (isToday && prog?.kind === 'rotation' && !prog.days && prog.seq.length) {
-    const id = prog.seq[nextRotationIndex(doc, prog)];
-    if (usable(doc, id) && !p.items.includes(id)) next = tplOf(doc, id);
-  }
-  // Scheda with preferred days and no workout today: rest, and which day comes next.
-  const rest = isToday && scheda?.days && !p.count && !next ? upcoming(doc, day, today) : null;
-  const nextId = next?.id ?? rest?.id ?? (scheda ? scheda.seq[nextRotationIndex(doc, scheda)] : null);
-  const goal = isToday && scheda ? weekProgress(doc, today) : null;
+  const { running } = schedaGroups(doc, today);
+  const anyScheda = doc.programs.some(isScheda);
 
   let main = '';
-  if (!groups.length && !loose.length && !p.count && !doc.programs.some(isScheda)) {
+  if (isToday && !anyScheda) {
     main = `<div class="card empty"><p>Nessuna scheda ancora.</p>
-      <p class="muted">Una scheda raccoglie i tuoi giorni di allenamento e li propone a rotazione.</p>
+      <p class="muted">Crea una scheda con i tuoi giorni di allenamento (Giorno 1, 2, 3…) e il suo periodo.</p>
       <div class="btn-row center"><a class="btn primary" href="#scheda/nuova">Crea la tua prima scheda</a>
-      ${isToday ? `<button type="button" class="btn" data-act="free" ${ro ? 'disabled' : ''}>Allenamento libero</button>` : ''}</div></div>`;
-  } else {
-    main += p.items.map((id) => tplCard(doc, tplOf(doc, id), { day, today, open: openFor(id), ro })).join('');
-    if (p.count > p.items.length) {                           // past rotation day: only the number is known
-      const ok = doneToday.length >= p.count;
-      main += `<section class="card tpl-card${ok ? ' done' : ''}"><div class="head"><span class="badge" aria-hidden="true">🔁</span>
-        <div class="grow"><b>Allenamento previsto</b><small class="muted">Scheda ${esc(prog?.name ?? '')}</small></div>
-        <span class="status${ok ? ' ok' : ''}">${ok ? '✓ Fatto' : 'Non svolto'}</span></div></section>`;
+      <button type="button" class="btn" data-act="free" ${ro ? 'disabled' : ''}>Allenamento libero</button></div></div>`;
+  } else if (isToday) {
+    main = running.map((p) => schedaCard(doc, p, ro)).join('');
+    if (!running.length) {
+      main = `<section class="card rest-card"><div class="head"><span class="badge" aria-hidden="true">😴</span>
+        <div class="grow"><b>Nessuna scheda in corso</b><small class="muted">Controlla le date delle tue schede.</small></div></div>
+        <div class="card-actions"><a class="btn" href="#schede">Vai alle schede</a></div></section>`;
     }
-    if (next) main += tplCard(doc, next, { day, today, kicker: 'Prossimo', open: openFor(next.id), ro });
-    if (!p.count && !next) {
-      const msg = !isToday ? 'Nessun allenamento previsto.'
-        : rest ? `Prossimo: ${fmtDay(rest.d)}`
-          : !prog && doc.programs.some(isScheda) ? 'Nessuna scheda attiva.' : 'Nessun allenamento previsto.';
-      main += `<section class="card rest-card"><div class="head"><span class="badge" aria-hidden="true">😴</span>
-        <div class="grow"><b>${rest ? 'Oggi riposo' : 'Riposo'}</b><small class="muted">${esc(msg)}</small></div></div>
-        ${isToday ? `<div class="card-actions">${!prog && doc.programs.some(isScheda) ? '<a class="btn" href="#schede">Vai alle schede</a>' : ''}
-          <button type="button" class="btn primary" data-act="pick" ${ro ? 'disabled' : ''}>Allenati comunque</button></div>` : ''}</section>`;
-    }
-    if (goal?.target != null) main += weekGoal(goal);
-    if ((p.count || next) && isToday) {
-      main += `<button type="button" class="btn block other-btn" data-act="pick" ${ro ? 'disabled' : ''}>+ Altro allenamento</button>`;
-    }
+    main += `<button type="button" class="btn block other-btn" data-act="pick" ${ro ? 'disabled' : ''}>+ Altro allenamento</button>`;
   }
 
   el.innerHTML = `
@@ -358,7 +292,7 @@ export function render(el, { doc, param, today }) {
     else if (act === 'free') start(null);
     else if (act === 'pick') {
       unlockAudio();
-      openPicker(doc, today, nextId);
+      openPicker(doc, today);
     } else if (act === 'addpast') openAddPast(doc, day, today, b.dataset.tpl ?? null);
     else if (act === 'backup') {
       try { await exportBackup(); } catch { /* retry from Impostazioni */ }

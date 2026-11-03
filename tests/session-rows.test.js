@@ -113,11 +113,11 @@ test('rowHtml / cardHtml: steppers, tag, previous values, escaping, read-only', 
   const doc = emptyDoc();
   doc.exercises.push({ id: 'x_evil01', name: '<b>x</b>', kind: 'weight', group: 'petto', also: [], deleted: false, updatedAt: 1 });
   doc.sessions.push({
-    id: 's_old', date: '2026-10-01', start: 1, end: 2, tpl: null, rot: null, rpe: null, note: '', deleted: false, updatedAt: 2,
+    id: 's_old', date: '2026-10-01', start: 1, end: 2, tpl: 't1', rot: null, rpe: null, note: '', deleted: false, updatedAt: 2,
     items: [{ ex: 'x_evil01', group: null, note: '', sets: [set({ kg: 100, reps: 8, done: true })] }],
   });
   const s = {
-    id: 's_now', date: '2026-10-28', start: 10, end: null,
+    id: 's_now', date: '2026-10-28', start: 10, end: null, tpl: 't1',
     items: [{ ex: 'x_evil01', group: null, note: '"n"', sets: [set({ kg: 102.5, reps: 6, tag: '+2,5 kg' })] }],
   };
   const c = viewContext(doc, s, false, new Set());
