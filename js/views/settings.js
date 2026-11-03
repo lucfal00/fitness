@@ -55,7 +55,7 @@ function syncSection() {
 }
 
 function prefsSection(doc, ro) {
-  const { theme, kgStep, rest, sound } = doc.settings;
+  const { theme, kgStep, rest, sound, loud } = doc.settings;
   const opt = (v, label) => `<label class="pick"><input type="radio" name="theme" value="${v}" ${theme === v ? 'checked' : ''} ${ro ? 'disabled' : ''}><span>${label}</span></label>`;
   const steps = KG_STEPS.map((v) => `<option value="${v}" ${v === kgStep ? 'selected' : ''}>${fmtKg(v)} kg</option>`).join('');
   const odd = KG_STEPS.includes(kgStep) ? '' : `<option value="${esc(kgStep)}" selected>${esc(fmtKg(kgStep))} kg</option>`;
@@ -69,6 +69,8 @@ function prefsSection(doc, ro) {
           <input type="number" name="rest" inputmode="numeric" min="${REST_MIN}" max="${REST_MAX}" step="5" value="${esc(rest)}" ${ro ? 'disabled' : ''}></label>
         <label class="switch-row"><span>Suono a fine recupero</span>
           <span class="switch"><input type="checkbox" name="sound" ${sound ? 'checked' : ''} ${ro ? 'disabled' : ''}><span></span></span></label>
+        <label class="switch-row"><span>Bip anche in modalità silenziosa<small class="muted" style="display:block">Allenamento a tempo su iPhone e iPad: la musica di altre app si mette in pausa.</small></span>
+          <span class="switch"><input type="checkbox" name="loud" ${loud ? 'checked' : ''} ${ro ? 'disabled' : ''}><span></span></span></label>
       </div>
     </section>`;
 }
@@ -152,8 +154,8 @@ export function render(el, { doc, refresh }) {
       setSetting('kgStep', parseFloat(e.target.value));
       return;
     }
-    if (name === 'sound') {
-      setSetting('sound', e.target.checked);
+    if (name === 'sound' || name === 'loud') {
+      setSetting(name, e.target.checked);
       return;
     }
     if (name === 'rest') {

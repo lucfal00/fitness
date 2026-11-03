@@ -5,7 +5,7 @@ import { getDoc, updateSession, finishSession, discardSession, isReadOnly } from
 import { workoutLabel } from '../logic.js';
 import { resolveExercise } from '../library.js';
 import { timerSteps, totalSec, advance, clock, PART_LABELS } from '../interval.js';
-import { keepAwake, tone, unlockAudio } from '../timer.js';
+import { keepAwake, tone, unlockAudio, setAudioSession } from '../timer.js';
 import { esc } from '../ui.js';
 import { figureOf, mountFigure } from '../figures.js';
 
@@ -25,6 +25,7 @@ if (typeof window !== 'undefined') {
 }
 
 function leave() {
+  setAudioSession('auto');
   clearInterval(tick);
   tick = 0;
   keepAwake(false);
@@ -101,6 +102,7 @@ function step() {
 }
 
 function play() {
+  setAudioSession(getDoc().settings.loud ? 'playback' : 'transient');
   unlockAudio();
   if (st.finished) return;
   st.started = true;

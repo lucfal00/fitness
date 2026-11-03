@@ -63,6 +63,14 @@ export function skipRest() {
 
 // ---- Sound ------------------------------------------------------------
 
+/** iOS / Safari audio session of the page: 'transient' (beeps over the music, which ducks; muted in silent mode),
+ *  'playback' (also in silent mode, but other apps' music pauses), 'auto' (the default). No-op elsewhere. */
+export function setAudioSession(type) {
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = type;
+  } catch { /* unsupported type: keep the current one */ }
+}
+
 /** Create / resume the AudioContext; call from a user gesture (tap on "Inizia"). iOS only lets a context play after
  *  a sound was started inside a gesture, so a silent buffer is played here too. */
 export function unlockAudio() {
