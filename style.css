@@ -597,7 +597,11 @@ body.timer-on main { padding: 0; max-width: none; }
 .tr-next b { font-weight: 700; }
 .tr-next span { color: var(--muted); font-variant-numeric: tabular-nums; }
 .tr-foot { display: grid; gap: 10px; }
-.tr-ctrl { display: flex; justify-content: center; }
+.tr-ctrl { display: flex; align-items: center; justify-content: center; gap: 36px; }
+.tr-skip { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: none; color: var(--muted); }
+.tr-skip svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tr-skip:hover, .tr-skip:focus-visible { color: var(--text); }
+.tr-skip:active { transform: scale(.9); }
 .tr-play { display: grid; place-items: center; width: 56px; height: 56px; border: 1.5px solid var(--ph); border-radius: 50%;
   background: transparent; color: var(--ph); transition: color .5s ease, border-color .5s ease; }
 .tr-play svg { width: 22px; height: 22px; fill: currentColor; }

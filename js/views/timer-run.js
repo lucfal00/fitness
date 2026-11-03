@@ -1,5 +1,5 @@
 // "A tempo" (#timer/<sessionId>): full-screen player of a timed day. Countdown ring, phase colours, next step,
-// beeps in the last 3 seconds and at every change, pause. Time comes from timestamps, so it stays right
+// beeps in the last 3 seconds and at every change, pause, back and forward. Time comes from timestamps, so it stays right
 // after the app was in the background (steps that ended meanwhile are counted as done).
 import { getDoc, updateSession, finishSession, discardSession, isReadOnly } from '../store.js';
 import { workoutLabel } from '../logic.js';
@@ -113,6 +113,37 @@ function pause() {
   st.leftMs = Math.max(0, leftMsNow());
   st.paused = true;
   paint();
+}
+
+/** Jump to step k: the new step starts in full; a skipped exercise is not marked done. */
+function jump(k) {
+  st.idx = Math.max(0, Math.min(k, st.steps.length - 1));
+  st.startedAt = Date.now();
+  st.leftMs = st.steps[st.idx].sec * 1000;
+  st.beeped = 0;
+  saveIdx();
+  if (!st.paused) tone(990, 0.3, 0.25);
+  paint();
+}
+
+/** Back: to the start of this step if it has run for more than 2 s, else to the previous exercise. */
+function back() {
+  const ran = st.steps[st.idx].sec * 1000 - leftMsNow();
+  if (ran > 2000) { jump(st.idx); return; }
+  let k = st.idx - 1;
+  while (k > 0 && st.steps[k].type === 'rest') k--;
+  jump(k);
+}
+
+/** Forward: straight to the next exercise (its pause skipped); after the last one the workout is over. */
+function forward() {
+  let k = st.idx + 1;
+  while (k < st.steps.length && st.steps[k].type !== 'work') k++;
+  if (k >= st.steps.length) {
+    st.finished = true;
+    keepAwake(false);
+    paint();
+  } else jump(k);
 }
 
 // ---- Painting ------------------------------------------------------------------------
@@ -264,7 +295,11 @@ export function render(el, { doc, param }) {
       <div class="tr-next"></div>
     </div>
     <footer class="tr-foot">
-      <div class="tr-ctrl"><button type="button" class="tr-play" data-act="toggle"></button></div>
+      <div class="tr-ctrl">
+        <button type="button" class="tr-skip" data-act="back" aria-label="Esercizio precedente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6v12M18 6.5 9.5 12 18 17.5z"/></svg></button>
+        <button type="button" class="tr-play" data-act="toggle"></button>
+        <button type="button" class="tr-skip" data-act="skip" aria-label="Esercizio successivo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6v12M6 6.5 14.5 12 6 17.5z"/></svg></button>
+      </div>
       <div class="tr-bar"><i></i></div>
       <p class="tr-total"></p>
     </footer>
@@ -279,6 +314,8 @@ export function render(el, { doc, param }) {
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'toggle') (st.paused ? play : pause)();
+    else if (act === 'back') back();
+    else if (act === 'skip') forward();
     else if (act === 'end') end();
     else if (act === 'save') save();
   };
