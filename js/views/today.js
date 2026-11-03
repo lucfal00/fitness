@@ -76,13 +76,13 @@ function schedaCard(doc, p, ro) {
       : `${n} ${n === 1 ? 'esercizio' : 'esercizi'}${mins > 0 ? ` · ~${mins} min` : ''}`;
     return `<button type="button" class="btn choice-btn day-btn" data-act="start" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>
       <span class="grow"><b>${esc(t.dayName ?? t.name)}</b><small class="muted">${esc(meta)}</small></span>
-      ${t.id === lastId ? '<span class="pill">Ultimo fatto</span>' : ''}</button>`;
+      ${t.id === lastId && days.length > 1 ? '<span class="pill">Ultimo fatto</span>' : ''}${days.length === 1 ? '<span class="day-go" aria-hidden="true">▶</span>' : ''}</button>`;
   };
   return `<section class="card tpl-card" style="--c:${safeColor(p.color)}">
     <div class="head"><span class="badge" aria-hidden="true">${esc(p.emoji || '💪')}</span>
       <div class="grow"><b>${esc(p.name)}</b><small class="muted">${esc(sub)}</small></div>
       <a class="btn small" href="#scheda/${encodeURIComponent(p.id)}" aria-label="Modifica ${esc(p.name)}">Modifica</a></div>
-    ${days.length ? `<p class="muted day-ask">Che giorno fai?</p><div class="day-btns">${days.map(btn).join('')}</div>`
+    ${days.length ? `${days.length > 1 ? '<p class="muted day-ask">Che giorno fai?</p>' : ''}<div class="day-btns">${days.map(btn).join('')}</div>`
     : `<p class="muted">Nessun giorno con esercizi: <a href="#scheda/${encodeURIComponent(p.id)}">aggiungili</a>.</p>`}
   </section>`;
 }

@@ -192,6 +192,7 @@ textarea { resize: vertical; }
 .day-btns { display: grid; gap: 8px; }
 .day-btn { text-align: left; min-height: 52px; }
 .day-btn small { display: block; }
+.day-go { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--accent-strong); color: var(--on-accent); font-size: .85rem; padding-left: 2px; }
 .tpl-card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .9rem; }
 .badge {
   width: 40px; height: 40px; flex: none; border-radius: 12px;
