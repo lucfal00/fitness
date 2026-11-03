@@ -1,10 +1,11 @@
-// "Progressi": one period selector drives the charts; consistency, volume, sets per group, body map, records, cardio.
+// "Progressi": one period selector drives the charts; calories, consistency, volume, sets per group, body map, records, cardio.
 import { weekStreaks, addDays, weekStart, doneCount, isConcluded } from '../logic.js';
 import { heatmap, valueLine, barChart, stackedBars } from '../charts.js';
 import { bodyMap } from '../bodymap.js';
 import { bodyMapLevel, pace } from '../metrics.js';
 import { resolveExercise, GROUPS } from '../library.js';
-import { esc, COLORS, GROUP_LABELS, fmtShort, fmtFull, safeColor } from '../ui.js';
+import { esc, COLORS, GROUP_LABELS, fmtShort, fmtFull, safeColor, fmtKcal } from '../ui.js';
+import { dayKcal, sessionKcal, restRate } from '../calories.js';
 import {
   PERIODS, GROUP_COLORS, periodRange, shiftPeriod, bucketStats, cardioTotals, weekGroupSets, sessionNames, recordSummary, trainedIn,
 } from './progress-data.js';
@@ -19,6 +20,51 @@ const MAX_RECORDS = 12;
 
 const empty = (text) => `<p class="muted">${text}</p>`;
 const bars = (points, unit, aria) => barChart(points, null, ACCENT, unit, aria);
+
+/** Today's estimate (basal + daily life + workouts), then the period: kcal above daily life per bucket, the daily
+ *  average and what the workouts burned. Without a profile: a link to fill it in. */
+function calories(doc, r, stats, today) {
+  const k = dayKcal(doc, today);
+  if (!k) {
+    const why = restRate(doc, today) ? 'sesso, anno di nascita e altezza' : 'il profilo e il peso in Corpo';
+    return `<section class="card st-wide"><h2>Calorie</h2>
+      <p class="muted">Per stimare le calorie servono ${why}.</p>
+      <a class="btn" href="#impostazioni/profilo">Completa il profilo</a></section>`;
+  }
+  const parts = [['Basale', k.bmr, 'var(--k-base)'], ['Vita quotidiana', k.life, 'var(--k-life)'], ['Allenamenti', k.extra, 'var(--accent)']];
+  const seg = parts.filter((p) => p[1] > 0).map(([, v, c]) => `<i style="flex:${v.toFixed(1)};background:${c}"></i>`).join('');
+  const rows = parts.map(([l, v, c], i) => `<li><span><i style="background:${c}"></i>${l}</span><b>${i === 2 ? '+' : ''}${fmtKcal(v)}</b></li>`).join('');
+  const end = r.to < today ? r.to : today;
+  let days = 0;
+  let sum = 0;
+  const pts = stats.map((b) => {
+    let extra = 0;
+    for (let d = b.from; d <= b.to && d <= end; d = addDays(d, 1)) {
+      const x = dayKcal(doc, d);
+      if (!x) continue;
+      extra += x.extra;
+      sum += x.total;
+      days++;
+    }
+    return { label: b.label, tip: b.tip, value: Math.round(extra) };
+  });
+  const done = doc.sessions.filter((s) => isConcluded(s) && s.date >= r.from && s.date <= end);
+  const burned = done.reduce((a, s) => a + (sessionKcal(doc, s)?.kcal ?? 0), 0);
+  return `<section class="card st-wide kcal-card"><div class="card-head"><h2>Calorie</h2><a class="btn small" href="#impostazioni/profilo">Profilo</a></div>
+    <div class="kcal-cols"><div>
+      <small class="lbl">Oggi · stima</small>
+      <p class="kcal-big"><b>${fmtKcal(k.total)}</b> kcal</p>
+      <div class="kcal-seg" aria-hidden="true">${seg}</div>
+      <ul class="kcal-parts">${rows}</ul>
+    </div><div>
+      ${pts.some((p) => p.value) ? `<p class="chart-sub">Allenamenti nel periodo · kcal in più della giornata tipo</p>${bars(pts, 'kcal', 'Calorie in più dagli allenamenti per periodo')}` : ''}
+      <ul class="rows kcal-rows">
+        ${days ? `<li><span class="grow">Media al giorno</span><b>${fmtKcal(sum / days)} kcal</b></li>` : ''}
+        <li><span class="grow">Bruciate in ${done.length} ${done.length === 1 ? 'allenamento' : 'allenamenti'}</span><b>${fmtKcal(burned)} kcal</b></li>
+      </ul>
+    </div></div>
+  </section>`;
+}
 
 function costanza(doc, r, today) {
   const end = r.to < today ? r.to : today;
@@ -149,6 +195,7 @@ export function render(el, { doc, today, refresh }) {
       <button class="icon-btn" data-act="pnext" aria-label="Periodo successivo" ${canNext ? '' : 'disabled'}>›</button>
     </div>
     ${any ? `<div class="stats-grid">
+      ${calories(doc, r, stats, today)}
       ${costanza(doc, r, today)}
       ${volume(stats)}
       ${groupsCard(stats)}

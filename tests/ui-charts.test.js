@@ -602,13 +602,14 @@ test('store: timed day saves its type and starts a timed session; switching back
 
 test('store: activities are concluded one-set sessions; update moves the end; library lists cardio and sport', async () => {
   const s = await freshStore(memStorage());
-  const { listActivities, isActivity, activityEmoji, resolveExercise } = await import('../js/library.js');
+  const { listActivities, isActivity, activityIcon, resolveExercise } = await import('../js/library.js');
   const doc = s.getDoc();
   const acts = listActivities(doc);
   assert.ok(acts.some((e) => e.id === 'lib_corsa') && acts.some((e) => e.id === 'lib_calcio') && acts.some((e) => e.id === 'lib_tennis'));
   assert.ok(!acts.some((e) => e.kind === 'weight' || e.kind === 'body' || e.id === 'lib_marcia_sul_posto'));
   assert.equal(isActivity(resolveExercise(doc, 'lib_squat')), false);
-  assert.equal(activityEmoji(resolveExercise(doc, 'lib_tennis')), '🎾');
+  assert.equal(activityIcon(resolveExercise(doc, 'lib_tennis')), 'ball-tennis');
+  assert.equal(activityIcon({ id: 'own1', kind: 'sport' }), 'activity');
   assert.equal(s.addActivity({ ex: 'lib_corsa', sec: 0 }), null);
   const id = s.addActivity({ date: '2026-10-01', ex: 'lib_corsa', sec: 1800, km: 5 });
   const a = doc.sessions.find((x) => x.id === id);

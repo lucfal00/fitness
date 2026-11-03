@@ -7,7 +7,8 @@ import { sessionVolume, sessionRecords, pace } from '../metrics.js';
 import {
   startRest, adjustRest, skipRest, restState, onRest, unlockAudio, beep, keepAwake,
 } from '../timer.js';
-import { esc, safeColor, fmtDay, fmtKg, fmtNum, fmtDuration } from '../ui.js';
+import { esc, safeColor, fmtDay, fmtKg, fmtNum, fmtDuration, fmtKcal } from '../ui.js';
+import { sessionKcal } from '../calories.js';
 import {
   openSheet, openExerciseSheet, filterBar, bindFilterBar, filterExercises, exerciseMeta,
 } from './exercises.js';
@@ -108,12 +109,14 @@ function recordLines(doc, rec) {
 
 function summaryHtml(doc, s, ms) {
   const vol = sessionVolume(doc, s);
+  const k = sessionKcal(doc, { ...s, end: s.start + ms });
   const { done, total } = setCounts(s);
   const lines = recordLines(doc, sessionRecords(doc, s));
   return `<div class="tiles sum-tiles">
       <div class="card tile"><b>${Math.max(0, Math.round(ms / 60000))}</b><small>minuti</small></div>
-      <div class="card tile"><b>${vol ? esc(fmtNum(vol)) : '–'}</b><small>kg volume</small></div>
+      <div class="card tile"><b>${k ? fmtKcal(k.kcal) : '–'}</b><small>kcal</small></div>
       <div class="card tile"><b>${done}/${total}</b><small>serie fatte</small></div></div>
+    ${vol ? `<p class="muted sum-vol">Volume ${esc(fmtNum(vol))} kg</p>` : ''}
     ${!done && total ? '<p class="muted">Nessuna serie segnata come fatta.</p>' : ''}
     ${lines ? `<ul class="rows rec-list">${lines}</ul>` : ''}`;
 }

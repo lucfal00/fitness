@@ -190,17 +190,18 @@ const BY_ID = new Map(LIBRARY.map((e) => [e.id, e]));
 
 // ---- Activities (cardio and sport, logged with a duration and, for cardio, a distance) ----
 
-const ACT_EMOJI = {
-  corsa: '🏃', camminata: '🚶', bici: '🚴', cyclette: '🚴', tapis_roulant: '🏃', ellittica: '🏃', vogatore: '🚣',
-  nuoto: '🏊', salto_corda: '🤸', calcio: '⚽', calcetto: '⚽', padel: '🎾', tennis: '🎾', basket: '🏀',
-  pallavolo: '🏐', arrampicata: '🧗', yoga: '🧘', pilates: '🧘',
+const ACT_ICON = {
+  corsa: 'run', camminata: 'walk', bici: 'bike', cyclette: 'bike', tapis_roulant: 'treadmill', ellittica: 'activity',
+  vogatore: 'kayak', nuoto: 'swimming', salto_corda: 'jump-rope', calcio: 'ball-football', calcetto: 'ball-football',
+  padel: 'ball-tennis', tennis: 'ball-tennis', basket: 'ball-basketball', pallavolo: 'ball-volleyball', arrampicata: 'mountain',
+  yoga: 'yoga', pilates: 'stretching',
 };
 const NOT_ACTIVITIES = new Set(['lib_marcia_sul_posto']);   // warm-up moves, not something one goes out to do
 
 export const isActivity = (ex) => !!ex && (ex.kind === 'cardio' || ex.kind === 'sport') && !NOT_ACTIVITIES.has(ex.id);
 
-/** Emoji of an activity (by library id), a generic one otherwise. */
-export const activityEmoji = (ex) => ACT_EMOJI[String(ex?.id ?? '').replace(/^lib_/, '')] ?? (ex?.kind === 'sport' ? '🏅' : '🏃');
+/** Line-icon name of an activity (by library id; see icons.js), a generic one otherwise. */
+export const activityIcon = (ex) => ACT_ICON[String(ex?.id ?? '').replace(/^lib_/, '')] ?? 'activity';
 
 /** Exercise by id: own (even if deleted, for history), else library + edits; null if unknown. */
 export function resolveExercise(doc, id) {

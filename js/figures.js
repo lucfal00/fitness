@@ -209,12 +209,12 @@ function bounds(fig) {
 function buildView(box, fig) {
   const [bx, by, bw, bh] = bounds(fig);
   const svg = el(box, 'svg', { viewBox: `${bx} ${by} ${bw} ${bh}`, 'aria-hidden': 'true' });
-  const L = (c, w = 4) => el(svg, 'line', { stroke: c, 'stroke-width': w, 'stroke-linecap': 'round' });
+  const L = (c, w = 2.8) => el(svg, 'line', { stroke: c, 'stroke-width': w, 'stroke-linecap': 'round' });
   if (fig.view === 'side') {
     el(svg, 'line', { x1: bx, y1: 121, x2: bx + bw, y2: 121, stroke: 'var(--line)', 'stroke-width': 1.5 });
-    if (fig.wall != null) el(svg, 'line', { x1: fig.wall, y1: by, x2: fig.wall, y2: 121, stroke: 'var(--muted)', 'stroke-width': 3 });
+    if (fig.wall != null) el(svg, 'line', { x1: fig.wall, y1: by, x2: fig.wall, y2: 121, stroke: 'var(--muted)', 'stroke-width': 2 });
     const o = { eb: L(FAR), wb: L(FAR), kb: L(FAR), fb: L(FAR), t: L(INK), hn: L(INK), ka: L(INK), fa: L(INK), ea: L(INK), wa: L(INK) };
-    const head = el(svg, 'circle', { r: 7.5, fill: 'var(--card)', stroke: INK, 'stroke-width': 3.5 });
+    const head = el(svg, 'circle', { r: 7, fill: 'var(--bg)', stroke: INK, 'stroke-width': 2.6 });
     return { svg, paint: (P) => {
       const [hx, hy, nx, ny, px, py, eax, eay, wax, way, ebx, eby, wbx, wby, kax, kay, fax, fay, kbx, kby, fbx, fby] = P;
       line(o.t, nx, ny, px, py); line(o.hn, nx, ny, hx, hy);
@@ -230,10 +230,10 @@ function buildView(box, fig) {
   }
   const segs = [['SR', 'ER', FAR], ['ER', 'WR', FAR], ['PR', 'KR', FAR], ['KR', 'FR', FAR],
     ['SL', 'EL', INK], ['EL', 'WL', INK], ['PL', 'KL', INK], ['KL', 'FL', INK]];
-  const shadows = segs.map(() => L('var(--line)', 4));
-  const torso = el(svg, 'polygon', { fill: 'var(--card)', stroke: INK, 'stroke-width': 3.5, 'stroke-linejoin': 'round' });
+  const shadows = segs.map(() => L('var(--line)', 2.8));
+  const torso = el(svg, 'polygon', { fill: 'var(--bg)', stroke: INK, 'stroke-width': 2.6, 'stroke-linejoin': 'round' });
   const limbs = segs.map((q) => L(q[2]));
-  const head = el(svg, 'circle', { r: 8.5, fill: 'var(--card)', stroke: INK, 'stroke-width': 3.5 });
+  const head = el(svg, 'circle', { r: 8, fill: 'var(--bg)', stroke: INK, 'stroke-width': 2.6 });
   return { svg, paint: (P) => {
     segs.forEach((q, n) => {
       const a = P[q[0]];

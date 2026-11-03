@@ -1,10 +1,10 @@
 // Offline support. Pages: network first (a new version shows on the next launch), cache when offline.
 // Other files: answer from cache, refresh the cache in the background.
-const CACHE = 'fitness-v26';
+const CACHE = 'fitness-v27';
 const FILES = [
   './', './index.html', './style.css', './manifest.webmanifest',
   './js/app.js', './js/store.js', './js/logic.js', './js/metrics.js', './js/merge.js', './js/library.js', './js/crypto.js',
-  './js/sync.js', './js/charts.js', './js/bodymap.js', './js/timer.js', './js/ui.js',
+  './js/sync.js', './js/charts.js', './js/bodymap.js', './js/timer.js', './js/ui.js', './js/calories.js', './js/icons.js',
   './js/views/today.js', './js/views/session.js', './js/views/timer-run.js', './js/interval.js', './js/figures.js',
   './js/views/templates.js', './js/views/scheda-edit.js', './js/views/template-edit.js', './js/views/exercises.js', './js/views/progress.js', './js/views/progress-data.js', './js/views/session-rows.js',
   './js/views/exercise-detail.js', './js/views/body.js', './js/views/settings.js',

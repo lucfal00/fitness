@@ -26,6 +26,8 @@ export const fmtDay = (key) => cap(dayFmt.format(fromKey(key)));
 export const fmtShort = (key) => `${+key.slice(8)}/${+key.slice(5, 7)}`;
 export const fmtFull = (key) => `${fmtShort(key)}/${key.slice(0, 4)}`;
 export const fmtNum = (n) => n.toLocaleString('it-IT', { maximumFractionDigits: 2 });
+/** Whole kcal with a dot every three digits: 2341 gives "2.341". */
+export const fmtKcal = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 export const pct = (f) => (f == null ? '–' : `${Math.round(f * 100)}%`);
 export const parseNum = (s) => parseFloat(String(s).replace(',', '.'));
 

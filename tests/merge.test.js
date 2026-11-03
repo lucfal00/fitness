@@ -111,3 +111,15 @@ test('exerciseEdits: inherited names are not treated as existing keys', () => {
   assert.equal(Object.hasOwn(doc.exerciseEdits, 'constructor'), true);
   assert.deepEqual(doc.exerciseEdits.constructor, { name: 'x', t: 0 });
 });
+
+test('profile: newest t wins, unknown or out-of-range fields dropped', () => {
+  const a = emptyDoc();
+  const b = emptyDoc();
+  a.settings.profile = { sex: 'm', born: 1999, cm: 178, life: 'sit', t: 5 };
+  b.settings.profile = { sex: 'f', born: 1800, cm: 170, life: 'x', evil: 1, t: 9 };
+  const { doc, count } = mergeDocs(a, b);
+  assert.deepEqual(doc.settings.profile, { sex: 'f', cm: 170, t: 9 });
+  assert.equal(count, 1);
+  assert.deepEqual(mergeDocs(b, a).doc.settings.profile, b.settings.profile);   // older incoming: local kept as is
+  assert.equal(mergeDocs(a, emptyDoc()).count, 0);
+});

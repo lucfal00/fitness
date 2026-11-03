@@ -8,10 +8,13 @@ Diario di allenamento personale, offline, per iPhone e PC. Nessun account: i dat
   aggiusti ripetizioni e kg con − e +. Timer di recupero, riscaldamento, superserie, RPE.
 - **Giorni a tempo**: un giorno può essere "A tempo" (riscaldamento, circuito a giri, defaticamento). Lo schermo mostra
   esercizio, conto alla rovescia e cosa viene dopo, con un bip in ognuno degli ultimi 3 secondi (colori rossi a fine esercizio), a metà degli esercizi oltre 30 s e a ogni cambio; pausa, indietro, avanti.
+- **Calorie** (stima ±20-30 %): basale con Mifflin-St Jeor, giornata tipo (seduto / in piedi / lavoro fisico) e allenamenti con i
+  MET del Compendium of Physical Activities 2024 (la corsa, la camminata e la bici in base alla velocità). Nel totale del giorno
+  un allenamento conta solo per quello che brucia in più della giornata tipo. Le kcal compaiono in Oggi, a fine allenamento e in Progressi.
 - **Progressi**: record personali, grafici per settimana/mese/6 mesi/anno, mappa muscolare.
 - **Corpo**: peso corporeo e misure.
 - **Libreria esercizi**: circa 125 esercizi, che si possono rinominare o nascondere; puoi anche creare, modificare ed eliminare esercizi tuoi.
-- **Impostazioni**: tema, passo dei kg, recupero, suono, sincronizzazione, esporta/importa backup.
+- **Impostazioni**: profilo per le calorie (sesso, anno di nascita, altezza, giornata tipo; sincronizzato), tema, passo dei kg, recupero, suono, sincronizzazione, esporta/importa backup.
 
 ## 1. Pubblicazione su GitHub Pages (una volta sola)
 

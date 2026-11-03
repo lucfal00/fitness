@@ -3,7 +3,8 @@ import {
   todayKey, addDays, weekStart, isConcluded, isDate, workoutLabel, isScheda, usable, schedaDays, schedaGroups, lastDayOf,
   choosableDays, choosableList,
 } from '../logic.js';
-import { resolveExercise, listActivities, isActivity, activityEmoji } from '../library.js';
+import { resolveExercise, listActivities, isActivity, activityIcon } from '../library.js';
+import { icon } from '../icons.js';
 import { isTimed } from '../interval.js';
 import { estimateMinutes, sessionVolume, sessionRecords, pace } from '../metrics.js';
 import {
@@ -11,9 +12,10 @@ import {
   addActivity, updateActivity, discardSession, saveExercise,
 } from '../store.js';
 import { unlockAudio, skipRest } from '../timer.js';
-import { esc, safeColor, fmtDay, fmtKg, fmtNum, parseNum, fmtFull, DAY_LETTERS } from '../ui.js';
+import { esc, safeColor, fmtDay, fmtKg, fmtNum, parseNum, fmtFull, fmtKcal, DAY_LETTERS } from '../ui.js';
 import { openSheet } from './exercises.js';
 import { setCounts, fmtMinutes } from './session-rows.js';
+import { sessionKcal, dayKcal } from '../calories.js';
 
 const WEEK_MS = 7 * 864e5;
 
@@ -31,9 +33,9 @@ function activityOf(doc, s) {
 
 function look(doc, s) {
   const act = activityOf(doc, s);
-  if (act) return { name: act.name, emoji: activityEmoji(act), color: safeColor(null) };
+  if (act) return { name: act.name, mark: icon(activityIcon(act)), color: safeColor(null) };
   const t = tplOf(doc, s.tpl);
-  return { name: workoutLabel(doc, s.tpl), emoji: t ? t.emoji || '💪' : '🏋️', color: safeColor(t?.color) };
+  return { name: workoutLabel(doc, s.tpl), mark: esc(t ? t.emoji || '💪' : '🏋️'), color: safeColor(t?.color) };
 }
 
 /** Selected day from the route: a valid date (past or future), else today. */
@@ -99,7 +101,7 @@ function openCard(doc, s) {
   const { done, total } = setCounts(s);
   const since = s.date === todayKey() ? `In corso da ${fmtMinutes(Date.now() - s.start)}` : `Aperto dal ${fmtDay(s.date).toLowerCase()}`;
   return `<section class="card tpl-card live" style="--c:${l.color}">
-    <div class="head"><span class="badge" aria-hidden="true">${esc(l.emoji)}</span>
+    <div class="head"><span class="badge" aria-hidden="true">${l.mark}</span>
       <div class="grow"><b>${esc(l.name)}</b><small class="muted">${esc(since)} · ${done}/${total} serie</small></div>
       <a class="btn primary" href="${liveHash(s)}">Riprendi</a></div>
   </section>`;
@@ -109,9 +111,11 @@ function activityCard(doc, s, act) {
   const set = s.items[0].sets[0] ?? {};
   const sec = set.sec ?? Math.round((s.end - s.start) / 1000);
   const p = set.km > 0 && sec > 0 ? pace(sec, set.km) : null;
-  const meta = [fmtMinutes(sec * 1000), set.km > 0 ? `${fmtKg(set.km)} km` : '', p ? `${p}/km` : ''].filter(Boolean).join(' · ');
+  const k = sessionKcal(doc, s);
+  const meta = [fmtMinutes(sec * 1000), set.km > 0 ? `${fmtKg(set.km)} km` : '', p ? `${p}/km` : '', k ? `${fmtKcal(k.kcal)} kcal` : '']
+    .filter(Boolean).join(' · ');
   return `<button type="button" class="card sess-card act-card" data-act="act-edit" data-id="${esc(s.id)}" style="--c:${safeColor(null)}">
-    <span class="badge" aria-hidden="true">${esc(activityEmoji(act))}</span>
+    <span class="badge" aria-hidden="true">${icon(activityIcon(act))}</span>
     <span class="grow"><b>${esc(act.name)} <span class="status ok">✓</span></b><small class="muted">${esc(meta)}</small></span>
     <span class="chev" aria-hidden="true">›</span></button>`;
 }
@@ -123,10 +127,11 @@ function doneCard(doc, s) {
   const vol = sessionVolume(doc, s);
   const { done, total } = setCounts(s);
   const rec = new Set(sessionRecords(doc, s).records.map((r) => r.ex)).size;
-  const meta = [fmtMinutes(s.end - s.start), vol ? `${fmtNum(vol)} kg` : '', `${done}/${total} serie`,
+  const k = sessionKcal(doc, s);
+  const meta = [fmtMinutes(s.end - s.start), k ? `${fmtKcal(k.kcal)} kcal` : '', vol ? `${fmtNum(vol)} kg` : '', `${done}/${total} serie`,
     rec ? `🏆 ${rec} record` : ''].filter(Boolean).join(' · ');
   return `<a class="card sess-card" href="${sessionHash(s.id)}" style="--c:${l.color}">
-    <span class="badge" aria-hidden="true">${esc(l.emoji)}</span>
+    <span class="badge" aria-hidden="true">${l.mark}</span>
     <span class="grow"><b>${esc(l.name)} <span class="status ok">✓</span></b><small class="muted">${esc(meta)}</small></span>
     <span class="chev" aria-hidden="true">›</span></a>`;
 }
@@ -163,10 +168,11 @@ const DEC = /^\d+([.,]\d+)?$/;
 function openActivityPicker(day) {
   const doc = getDoc();
   const list = listActivities(doc);
+  const row = (attrs, ic, name, chev = true) => `<li><button type="button" class="act-row" ${attrs}>${icon(ic)}<span class="grow">${name}</span>
+    ${chev ? icon('chevron-right', 'ic chev') : ''}</button></li>`;
   const { box, close } = openSheet(`<h2>Aggiungi attività</h2>
-    <div class="act-grid">${list.map((ex) => `<button type="button" class="btn act-pick" data-ex="${esc(ex.id)}">
-      <span class="act-emoji" aria-hidden="true">${esc(activityEmoji(ex))}</span><span>${esc(ex.name)}</span></button>`).join('')}
-      <button type="button" class="btn act-pick act-new" data-act="new"><span class="act-emoji" aria-hidden="true">＋</span><span>Nuova attività</span></button></div>
+    <ul class="act-list">${list.map((ex) => row(`data-ex="${esc(ex.id)}"`, activityIcon(ex), esc(ex.name))).join('')}
+      ${row('data-act="new"', 'plus', 'Nuova attività', false).replace('act-row', 'act-row act-new')}</ul>
     <button type="button" class="btn center" data-act="cancel">Annulla</button>`);
   box.onclick = (e) => {
     const b = e.target.closest('button');
@@ -212,11 +218,16 @@ function openActivityForm(day, ex, s = null) {
   const min = s ? Math.round((set.sec ?? (s.end - s.start) / 1000) / 60) : '';
   const km = set.km > 0 ? fmtKg(set.km) : '';
   const withKm = ex.kind === 'cardio';
-  const { box, close } = openSheet(`<h2><span aria-hidden="true">${esc(activityEmoji(ex))}</span> ${esc(ex.name)}</h2>
-    <p class="muted">${esc(fmtDay(s ? s.date : day))}</p>
+  const { box, close } = openSheet(`<h2 class="act-title">${icon(activityIcon(ex))}${esc(ex.name)}</h2>
+    <p class="muted act-day">${esc(fmtDay(s ? s.date : day))}</p>
     <form class="form" novalidate>
-      <label class="field">Durata (minuti)<input name="min" type="text" inputmode="numeric" value="${esc(min)}" placeholder="es. 30" autocomplete="off"></label>
-      <div class="chips quick-min">${QUICK_MIN.map((m) => `<button type="button" class="chip" data-min="${m}">${m}′</button>`).join('')}</div>
+      <fieldset><legend>Durata</legend>
+        <div class="dur"><button type="button" class="dur-btn" data-step="-5" aria-label="5 minuti in meno">−</button>
+          <label class="dur-val"><input name="min" type="text" inputmode="numeric" value="${esc(min)}" placeholder="30" autocomplete="off"
+            aria-label="Durata in minuti"><span>min</span></label>
+          <button type="button" class="dur-btn" data-step="5" aria-label="5 minuti in più">+</button></div>
+        <div class="quick-min">${QUICK_MIN.map((m) => `<button type="button" class="qchip${+min === m ? ' on' : ''}" data-min="${m}">${m}</button>`).join('')}</div>
+      </fieldset>
       ${withKm ? `<label class="field">Distanza (km, facoltativa)<input name="km" type="text" inputmode="decimal" value="${esc(km)}" placeholder="es. 5" autocomplete="off"></label>` : ''}
       <label class="field">Nota (facoltativa)<input name="note" type="text" maxlength="200" value="${esc(s?.note ?? '')}" autocomplete="off"></label>
       <p class="error" role="alert" hidden></p>
@@ -233,8 +244,12 @@ function openActivityForm(day, ex, s = null) {
   form.onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    if (b.dataset.min) form.min.value = b.dataset.min;
-    else if (b.dataset.act === 'cancel') close();
+    if (b.dataset.min || b.dataset.step) {
+      const cur = parseInt(form.min.value, 10) || 0;
+      const v = b.dataset.min ? +b.dataset.min : Math.min(600, Math.max(5, cur + +b.dataset.step));
+      form.min.value = v;
+      form.querySelectorAll('.qchip').forEach((c) => c.classList.toggle('on', +c.dataset.min === v));
+    } else if (b.dataset.act === 'cancel') close();
     else if (b.dataset.act === 'del' && confirm(`Eliminare ${ex.name}?`)) {
       discardSession(s.id);
       close();
@@ -272,7 +287,7 @@ function start(tpl) {
   const s = doc.sessions.find((x) => x.id === openId);
   const l = look(doc, s);
   const { box, close } = openSheet(`<h2>Hai un allenamento in corso</h2>
-    <p class="muted">${esc(l.emoji)} ${esc(l.name)} · iniziato ${s.date === todayKey() ? `${fmtMinutes(Date.now() - s.start)} fa` : `il ${esc(fmtDay(s.date).toLowerCase())}`}</p>
+    <p class="muted">${esc(l.name)} · iniziato ${s.date === todayKey() ? `${fmtMinutes(Date.now() - s.start)} fa` : `il ${esc(fmtDay(s.date).toLowerCase())}`}</p>
     <button type="button" class="btn primary center" data-m="resume">Riprendi</button>
     <button type="button" class="btn center" data-m="end">Termina quello aperto e inizia</button>
     <button type="button" class="btn center" data-m="cancel">Annulla</button>`);
@@ -352,6 +367,7 @@ export function render(el, { doc, param, today }) {
   const doneToday = doc.sessions.filter((s) => isConcluded(s) && s.date === day).sort((a, b) => a.start - b.start);
   const { running } = schedaGroups(doc, today);
   const anyScheda = doc.programs.some(isScheda);
+  const kcal = future ? null : dayKcal(doc, day);
 
   let main = '';
   if (isToday && !anyScheda) {
@@ -378,7 +394,7 @@ export function render(el, { doc, param, today }) {
   el.innerHTML = `
     <header class="top">
       <button type="button" class="icon-btn" data-act="prev" aria-label="Giorno precedente">‹</button>
-      <div class="grow"><h1>${esc(title)}</h1><small>${esc(fmtDay(day))}</small></div>
+      <div class="grow"><h1>${esc(title)}</h1><small>${esc(fmtDay(day))}${kcal ? ` · <a href="#progressi" class="kcal-link">≈ ${fmtKcal(kcal.total)} kcal</a>` : ''}</small></div>
       ${isToday ? '' : '<button type="button" class="btn small today-btn" data-act="today" aria-label="Torna a oggi">Oggi</button>'}
       <button type="button" class="icon-btn" data-act="next" aria-label="Giorno successivo">›</button>
     </header>

@@ -3,7 +3,7 @@
 import {
   emptyDoc, newId, todayKey, fromKey, isScheda, isDate, lastSessionOf,
 } from './logic.js';
-import { validateDoc, mergeDocs } from './merge.js';
+import { validateDoc, mergeDocs, cleanProfile } from './merge.js';
 import { isTimed } from './interval.js';
 import { SyncError, connect, syncOnce } from './sync.js';
 import { safeColor } from './ui.js';
@@ -631,6 +631,13 @@ export function setBody(d, patch) {
 }
 
 // ---- Settings ------------------------------------------------------------
+
+/** Calorie profile (sex, birth year, height, typical day): synced, unlike the other settings. */
+export function setProfile(patch) {
+  if (readOnly) return;
+  doc.settings.profile = cleanProfile({ ...doc.settings.profile, ...patch, t: now() });
+  save('settings', 'profile');
+}
 
 export function setSetting(k, v) {
   if (readOnly) return;

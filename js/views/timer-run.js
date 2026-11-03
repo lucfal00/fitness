@@ -8,7 +8,8 @@ import { workoutLabel } from '../logic.js';
 import { resolveExercise } from '../library.js';
 import { timerSteps, totalSec, advance, clock, PART_LABELS } from '../interval.js';
 import { keepAwake, unlockAudio, setAudioSession, scheduleTone, cancelTones } from '../timer.js';
-import { esc } from '../ui.js';
+import { esc, fmtKcal } from '../ui.js';
+import { sessionKcal } from '../calories.js';
 import { figureOf, mountFigure } from '../figures.js';
 
 const PREP = 5;                       // "Preparati" seconds before the first step
@@ -17,7 +18,7 @@ const HALF_FROM = 30;                 // exercises longer than this get a beep h
 const R = 108;                        // ring radius
 const C = 2 * Math.PI * R;
 
-let st = null;                        // { sid, steps, idx, startedAt, paused, leftMs, finished, started }
+let st = null;                        // { sid, steps, idx, startedAt, paused, leftMs, finished, started, rpe }
 let tick = 0;
 let raf = 0;
 let root = null;
@@ -214,10 +215,19 @@ function paint() {
   const box = root.querySelector('.tr');
   if (st.finished) {
     box.dataset.phase = 'done';
+    if (box.querySelector('.tr-done')) return;              // drawn once: the effort choice stays
     const n = s.items.reduce((a, it) => a + it.sets.filter((x) => x.done).length, 0);
     const mins = Math.max(1, Math.round((Date.now() - s.start) / 60000));
-    box.querySelector('.tr-main').innerHTML = `<div class="tr-done"><div class="tr-emoji" aria-hidden="true">🎉</div>
-      <h2>Fatto!</h2><p>${n} ${n === 1 ? 'esercizio completato' : 'esercizi completati'} · ${mins} min</p>
+    const k = sessionKcal(doc, { ...s, end: Date.now() });
+    const tile = (v, l) => `<div><b>${v}</b><small>${l}</small></div>`;
+    box.querySelector('.tr-main').innerHTML = `<div class="tr-done">
+      <div class="tr-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <h2>Fatto</h2><p>${esc(workoutLabel(doc, s.tpl))}</p>
+      <div class="tr-sum">${tile(mins, 'Minuti')}${tile(k ? fmtKcal(k.kcal) : '–', 'kcal')}${tile(n, n === 1 ? 'Esercizio' : 'Esercizi')}</div>
+      <p class="tr-ask">Com’è andata?</p>
+      <div class="tr-rpe" role="group" aria-label="Fatica da 1 a 10">${Array.from({ length: 10 }, (_, j) => j + 1)
+        .map((v) => `<button type="button" data-act="rpe" data-v="${v}" aria-pressed="${st.rpe === v}" class="${st.rpe === v ? 'on' : ''}">${v}</button>`).join('')}</div>
+      <div class="tr-rpe-ends"><span>Leggero</span><span>Al limite</span></div>
       <button type="button" class="btn primary block" data-act="save">Salva allenamento</button></div>`;
     box.querySelector('.tr-foot').hidden = true;
     return;
@@ -275,7 +285,7 @@ function smooth() {
 }
 
 function save() {
-  finishSession(st.sid, {});
+  finishSession(st.sid, { rpe: st.rpe ?? null });
   leave();
   const id = st.sid;
   st = null;
@@ -352,6 +362,15 @@ export function render(el, { doc, param }) {
     else if (act === 'skip') forward();
     else if (act === 'end') end();
     else if (act === 'save') save();
+    else if (act === 'rpe') {
+      const v = +b.dataset.v;
+      st.rpe = st.rpe === v ? null : v;
+      el.querySelectorAll('[data-act=rpe]').forEach((c) => {
+        const on = +c.dataset.v === st.rpe;
+        c.classList.toggle('on', on);
+        c.setAttribute('aria-pressed', String(on));
+      });
+    }
   };
   clearInterval(tick);
   tick = setInterval(step, 200);
