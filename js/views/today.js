@@ -8,7 +8,7 @@ import { isTimed } from '../interval.js';
 import { estimateMinutes, sessionVolume, sessionRecords, pace } from '../metrics.js';
 import {
   startSession, finishSession, addPastSession, openSessionId, setBody, isReadOnly, getDoc, getSync, exportBackup,
-  addActivity, updateActivity, discardSession,
+  addActivity, updateActivity, discardSession, saveExercise,
 } from '../store.js';
 import { unlockAudio, skipRest } from '../timer.js';
 import { esc, safeColor, fmtDay, fmtKg, fmtNum, parseNum, fmtFull, DAY_LETTERS } from '../ui.js';
@@ -165,13 +165,43 @@ function openActivityPicker(day) {
   const list = listActivities(doc);
   const { box, close } = openSheet(`<h2>Aggiungi attività</h2>
     <div class="act-grid">${list.map((ex) => `<button type="button" class="btn act-pick" data-ex="${esc(ex.id)}">
-      <span class="act-emoji" aria-hidden="true">${esc(activityEmoji(ex))}</span><span>${esc(ex.name)}</span></button>`).join('')}</div>
+      <span class="act-emoji" aria-hidden="true">${esc(activityEmoji(ex))}</span><span>${esc(ex.name)}</span></button>`).join('')}
+      <button type="button" class="btn act-pick act-new" data-act="new"><span class="act-emoji" aria-hidden="true">＋</span><span>Nuova attività</span></button></div>
     <button type="button" class="btn center" data-act="cancel">Annulla</button>`);
   box.onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     close();
     if (b.dataset.ex) openActivityForm(day, resolveExercise(getDoc(), b.dataset.ex));
+    else if (b.dataset.act === 'new') openNewActivity(day);
+  };
+}
+
+/** A new activity (own exercise): name and whether it has a distance (cardio) or not (sport); then its form. */
+function openNewActivity(day) {
+  const { box, close } = openSheet(`<h2>Nuova attività</h2>
+    <form class="form" novalidate>
+      <label class="field">Nome<input name="name" maxlength="40" placeholder="Es. Sci di fondo" autocomplete="off"></label>
+      <fieldset><legend>Si misura anche la distanza?</legend>
+        <div class="seg"><label class="pick"><input type="radio" name="kind" value="cardio" checked><span>Sì, con i km</span></label>
+          <label class="pick"><input type="radio" name="kind" value="sport"><span>No, solo la durata</span></label></div>
+      </fieldset>
+      <p class="error" role="alert" hidden></p>
+      <button class="btn primary center" type="submit">Continua</button>
+      <button class="btn center" type="button" data-act="cancel">Annulla</button>
+    </form>`);
+  const form = box.querySelector('form');
+  form.querySelector('[data-act=cancel]').onclick = close;
+  form.name.focus();
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const name = form.name.value.trim();
+    const err = form.querySelector('.error');
+    if (!name) { err.textContent = 'Scrivi il nome dell’attività.'; err.hidden = false; return; }
+    const id = saveExercise({ name, kind: form.kind.value, group: null, also: [] });
+    if (id == null) { err.textContent = 'Modalità sola lettura: impossibile salvare.'; err.hidden = false; return; }
+    close();
+    openActivityForm(day, resolveExercise(getDoc(), id));
   };
 }
 

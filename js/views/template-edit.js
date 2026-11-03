@@ -257,6 +257,42 @@ function setRows(it, i, shape) {
       <button type="button" class="btn small" data-act="addwarm" data-i="${i}">+ Riscaldamento</button></div>`;
 }
 
+/** One-line summary of an exercise of a normal day: "3 × 10 · 60 kg · rec. 90 s · superserie". */
+function itemSummary(doc, d, it, i) {
+  const shape = shapeOf(doc, it.ex);
+  const parts = [];
+  if (shape === 'cardio') {
+    const r = it.sets[0] ?? {};
+    parts.push([r.km?.trim() ? `${r.km} km` : '', r.dur?.trim() ? r.dur : ''].filter(Boolean).join(' · ') || 'Cardio');
+  } else if (shape === 'sport') {
+    parts.push(it.sets[0]?.dur?.trim() || 'Sport');
+  } else {
+    const work = it.sets.filter((r) => !r.w);
+    const warm = it.sets.length - work.length;
+    const vals = [...new Set(work.map((r) => (shape === 'time' ? r.sec : r.reps)))];
+    const unit = shape === 'time' ? ' s' : '';
+    parts.push(vals.length === 1 ? `${work.length} × ${vals[0]}${unit}` : `${work.length} serie (${work.map((r) => (shape === 'time' ? r.sec : r.reps)).join(', ')})`);
+    const kgs = [...new Set(work.map((r) => r.kg?.trim()).filter(Boolean))];
+    if (kgs.length) parts.push(`${kgs.join('/')} kg`);
+    if (warm) parts.push(`+${warm} risc.`);
+    if (it.rest.trim()) parts.push(`rec. ${it.rest} s`);
+  }
+  const linked = (it.link && canLink(doc, d.items, i)) || (i > 0 && d.items[i - 1].link && canLink(doc, d.items, i - 1));
+  if (linked) parts.push('superserie');
+  return { text: parts.join(' · '), linked };
+}
+
+/** Collapsed exercise: name, note and summary on one tappable row. */
+function itemRow(doc, d, it, i) {
+  const ex = resolveExercise(doc, it.ex);
+  const { text, linked } = itemSummary(doc, d, it, i);
+  return `<section class="card tpl-ex tsum ${linked ? 'grouped' : ''}" data-item="${i}">
+    <button type="button" class="tsum-row" data-act="open" data-i="${i}" aria-expanded="false">
+      <span class="tname"><b>${esc(ex?.name ?? 'Esercizio rimosso')}</b><small>${esc([text, it.note].filter(Boolean).join(' · '))}</small></span>
+      <span class="chev" aria-hidden="true">›</span></button>
+  </section>`;
+}
+
 function itemCard(doc, d, it, i) {
   const ex = resolveExercise(doc, it.ex);
   const shape = shapeOf(doc, it.ex);
@@ -275,23 +311,54 @@ function itemCard(doc, d, it, i) {
     <label class="field">Nota${input(`data-i="${i}" data-k="note" maxlength="120"`, it.note, 'autocomplete="off"')}</label>
     ${canLink(doc, d.items, i) ? `<label class="switch-row"><span>Unisci al successivo (superserie)</span>
       <span class="switch"><input type="checkbox" data-i="${i}" data-k="link" ${it.link ? 'checked' : ''}><span></span></span></label>` : ''}
+    <button type="button" class="btn block small" data-act="close" data-i="${i}">Fatto</button>
   </section>`;
 }
 
-function timedCard(doc, d, it, i) {
+/** One compact row of a timed day: name and note, work and pause seconds, a menu (move, note, remove). */
+function timedRow(doc, it, i) {
   const ex = resolveExercise(doc, it.ex);
+  return `<li class="trow" data-item="${i}">
+    <span class="tname"><b>${esc(ex?.name ?? 'Esercizio rimosso')}</b>${it.note ? `<small>${esc(it.note)}</small>` : ''}</span>
+    ${input(`data-i="${i}" data-k="sec" inputmode="numeric" aria-label="Lavoro in secondi, ${esc(ex?.name ?? '')}"`, it.sec)}
+    ${input(`data-i="${i}" data-k="rest" inputmode="numeric" aria-label="Pausa dopo in secondi, ${esc(ex?.name ?? '')}"`, it.rest)}
+    <button type="button" class="icon-btn small" data-act="more" data-i="${i}" aria-label="Opzioni ${esc(ex?.name ?? 'esercizio')}">⋯</button>
+  </li>`;
+}
+
+/** Menu of a timed row: move up / down within its part, edit the note, remove. */
+function openRowMenu(doc, d, i, redraw) {
+  const it = d.items[i];
   const same = d.items.map((x, k) => (x.part === it.part ? k : -1)).filter((k) => k >= 0);
   const pos = same.indexOf(i);
-  return `<section class="card tpl-ex timed-ex part-${it.part}" data-item="${i}">
-    <div class="ex-head"><span class="grow"><b>${esc(ex?.name ?? 'Esercizio rimosso')}</b></span>
-      <button type="button" class="icon-btn small" data-act="up" data-i="${i}" aria-label="Sposta su" ${pos === 0 ? 'disabled' : ''}>↑</button>
-      <button type="button" class="icon-btn small" data-act="down" data-i="${i}" aria-label="Sposta giù" ${pos === same.length - 1 ? 'disabled' : ''}>↓</button>
-      <button type="button" class="icon-btn small" data-act="del" data-i="${i}" aria-label="Rimuovi esercizio">✕</button></div>
-    <div class="two">
-      <label class="field">Durata (s)${input(`data-i="${i}" data-k="sec" inputmode="numeric"`, it.sec)}</label>
-      <label class="field">Pausa dopo (s)${input(`data-i="${i}" data-k="rest" inputmode="numeric"`, it.rest)}</label>
-    </div>
-  </section>`;
+  const name = resolveExercise(doc, it.ex)?.name ?? 'Esercizio';
+  const { box, close } = openSheet(`<h2>${esc(name)}</h2>
+    <form class="form" novalidate>
+      <label class="field">Nota (lato, verso, consigli)<input name="note" maxlength="120" value="${esc(it.note)}" autocomplete="off"
+        placeholder="Es. Gamba sinistra"></label>
+      <button type="submit" class="btn primary center">Salva nota</button>
+    </form>
+    <div class="btn-row menu-moves"><button type="button" class="btn" data-m="up" ${pos === 0 ? 'disabled' : ''}>↑ Sposta su</button>
+      <button type="button" class="btn" data-m="down" ${pos === same.length - 1 ? 'disabled' : ''}>↓ Sposta giù</button></div>
+    <button type="button" class="btn danger center" data-m="del">Rimuovi</button>
+    <button type="button" class="btn center" data-m="cancel">Annulla</button>`);
+  const form = box.querySelector('form');
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    it.note = form.note.value.trim().slice(0, 120);
+    close();
+    redraw();
+  };
+  box.onclick = (e) => {
+    const m = e.target.closest('button[data-m]')?.dataset.m;
+    if (!m) return;
+    close();
+    if (m === 'up' || m === 'down') {
+      const j = same[pos + (m === 'up' ? -1 : 1)];
+      if (j !== undefined) [d.items[i], d.items[j]] = [d.items[j], d.items[i]];
+    } else if (m === 'del') d.items.splice(i, 1);
+    if (m !== 'cancel') redraw();
+  };
 }
 
 /** Total minutes of the draft, counting only valid values. */
@@ -313,9 +380,14 @@ function timedBody(doc, d) {
       </div>
       <small class="muted">Riscaldamento e defaticamento si fanno una volta; il circuito si ripete per i giri indicati.<span class="mins">${mins ? ` Durata totale: circa ${mins} min.` : ''}</span></small>
     </div>
-    ${PARTS.map((part) => `<h2 class="list-title">${PART_LABELS[part]}</h2>
-      ${d.items.map((it, i) => (it.part === part ? timedCard(doc, d, it, i) : '')).join('')}
-      <button type="button" class="btn block" data-act="add" data-part="${part}" style="margin-bottom:12px">+ Aggiungi ${part === 'main' ? 'esercizio' : PART_LABELS[part].toLowerCase()}</button>`).join('')}`;
+    ${PARTS.map((part) => {
+    const rows = d.items.map((it, i) => (it.part === part ? timedRow(doc, it, i) : '')).join('');
+    return `<h2 class="list-title">${PART_LABELS[part]}</h2>
+      <div class="card tlist part-${part}">
+        ${rows ? `<ul class="trows"><li class="thead" aria-hidden="true"><span></span><span>Lavoro s</span><span>Pausa s</span><span></span></li>${rows}</ul>` : ''}
+        <button type="button" class="btn block small" data-act="add" data-part="${part}">+ Aggiungi ${part === 'main' ? 'esercizio' : PART_LABELS[part].toLowerCase()}</button>
+      </div>`;
+  }).join('')}`;
 }
 
 let pickPart = 'main';
@@ -356,6 +428,7 @@ function openPicker() {
 function addItem(id) {
   if (!draft) return;
   draft.items.push(draft.mode === 'timer' ? timedItem(id, pickPart) : newItem(getDoc(), id));
+  draft.open = draft.items.length - 1;            // a new exercise opens for editing
   refresh();
   document.querySelector('[data-item]:last-of-type')?.scrollIntoView({ block: 'nearest' });
 }
@@ -391,7 +464,7 @@ export function render(el, ctx) {
       </fieldset>
     </div>
     ${d.mode === 'timer' ? timedBody(doc, d) : `<h2 class="list-title">Esercizi</h2>
-    ${d.items.map((it, i) => itemCard(doc, d, it, i)).join('')}
+    ${d.items.map((it, i) => (i === d.open ? itemCard(doc, d, it, i) : itemRow(doc, d, it, i))).join('')}
     <button type="button" class="btn block" data-act="add" style="margin-bottom:12px">+ Aggiungi esercizio</button>`}
     <div class="card form">
       <div class="errors" role="alert"></div>
@@ -435,6 +508,12 @@ export function render(el, ctx) {
     const i = +b.dataset.i;
     const it = d.items[i];
     const { act } = b.dataset;
+    if (act === 'open' || act === 'close') {
+      d.open = act === 'open' ? i : -1;           // one exercise open at a time; the others stay one line
+      render(el, ctx);
+      if (act === 'open') el.querySelector(`[data-item="${i}"]`)?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
     if (act === 'add') {
       pickPart = b.dataset.part ?? 'main';
       openPicker();
@@ -445,11 +524,8 @@ export function render(el, ctx) {
       render(el, ctx);
       return;
     }
-    if (d.mode === 'timer' && (act === 'up' || act === 'down')) {
-      const same = d.items.map((x, k) => (x.part === it.part ? k : -1)).filter((k) => k >= 0);
-      const j = same[same.indexOf(i) + (act === 'up' ? -1 : 1)];
-      if (j !== undefined) [d.items[i], d.items[j]] = [d.items[j], d.items[i]];
-      render(el, ctx);
+    if (act === 'more') {
+      openRowMenu(getDoc(), d, i, () => render(el, ctx));
       return;
     }
     if (act === 'addset' || act === 'addwarm') {
@@ -470,9 +546,11 @@ export function render(el, ctx) {
       const prev = d.items[i - 1];
       if (prev) prev.link = prev.link && it.link;
       d.items.splice(i, 1);
+      d.open = -1;
     } else if (act === 'up' || act === 'down') {
       const j = act === 'up' ? i - 1 : i + 1;
       [d.items[i], d.items[j]] = [d.items[j], d.items[i]];
+      if (d.open === i) d.open = j;                // the open exercise moves with its card
       const lo = Math.min(i, j);
       [lo - 1, lo, lo + 1].forEach((k) => { if (d.items[k]) d.items[k].link = false; });   // moving breaks superset links
     } else if (act === 'save') {
