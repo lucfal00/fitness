@@ -199,8 +199,8 @@ textarea { resize: vertical; }
   display: grid; place-items: center; font-size: 1.25rem;
   background: color-mix(in srgb, var(--c, var(--accent)) 18%, var(--card));
 }
-.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
-.tile { text-align: center; padding: 14px 8px; margin: 0; }
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.tile { text-align: center; padding: 14px 6px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .tile b { display: block; font-size: 1.6rem; letter-spacing: -.02em; }
 .tile small { display: block; }
 .week .day.future { opacity: .45; }
@@ -275,7 +275,10 @@ details .rows li { padding-left: 0; padding-right: 0; }
 .days-row .pick input:checked + span { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--on-accent); }
 .emoji-row button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); font-size: 1.25rem; }
 .emoji-row button.on { border-color: var(--accent-strong); box-shadow: 0 0 0 2px var(--accent-strong); }
-.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.two > *, .two input { min-width: 0; }
+input[type="date"] { display: block; width: 100%; min-width: 0; min-height: 46px; -webkit-appearance: none; appearance: none; }
+input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .danger-zone { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line); padding-top: 16px; }
 .danger-zone .btn { flex: 1; min-width: 6.5rem; }
 .tpl-ex { display: grid; gap: 10px; }

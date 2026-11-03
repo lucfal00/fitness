@@ -132,6 +132,8 @@ const BODY = [
   ['wall_slide', 'Scivolamento sul muro', 'spalle', ['dorso'], 'reps'],
   ['dead_bug', 'Dead bug', 'addome', [], 'reps'],
   ['rotazioni_spalle', 'Rotazioni spalle', 'spalle', [], 'time'],
+  ['torsioni_busto', 'Torsioni del busto', 'addome', ['dorso'], 'time'],
+  ['oscillazioni_gambe', 'Oscillazioni delle gambe', 'glutei', ['femorali'], 'time'],
   ['plank', 'Plank', 'addome', ['spalle'], 'time'],
   ['plank_laterale', 'Plank laterale', 'addome', ['spalle'], 'time'],
   ['wall_sit', 'Wall sit', 'quadricipiti', ['glutei'], 'time'],
