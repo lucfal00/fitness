@@ -49,7 +49,7 @@ test('newId and emptyDoc', () => {
   assert.notEqual(L.newId('t_'), L.newId('t_'));
   const d = L.emptyDoc();
   assert.equal(d.version, 1);
-  assert.deepEqual(d.settings, { theme: 'auto', kgStep: 2.5, rest: 90, sound: true, loud: false, lastBackup: 0 });
+  assert.deepEqual(d.settings, { theme: 'auto', kgStep: 2.5, rest: 90, sound: true, loud: true, lastBackup: 0 });
   assert.deepEqual(d.plan, {});
   assert.deepEqual(d.sessions, []);
 });

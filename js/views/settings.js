@@ -69,7 +69,7 @@ function prefsSection(doc, ro) {
           <input type="number" name="rest" inputmode="numeric" min="${REST_MIN}" max="${REST_MAX}" step="5" value="${esc(rest)}" ${ro ? 'disabled' : ''}></label>
         <label class="switch-row"><span>Suono a fine recupero</span>
           <span class="switch"><input type="checkbox" name="sound" ${sound ? 'checked' : ''} ${ro ? 'disabled' : ''}><span></span></span></label>
-        <label class="switch-row"><span>Bip anche in modalità silenziosa<small class="muted" style="display:block">Allenamento a tempo su iPhone e iPad: la musica di altre app si mette in pausa.</small></span>
+        <label class="switch-row"><span>Bip anche in modalità silenziosa<small class="muted" style="display:block">Allenamento a tempo su iPhone e iPad. Disattivalo se vuoi la musica di un’altra app sotto: in quel caso i bip seguono il silenzioso.</small></span>
           <span class="switch"><input type="checkbox" name="loud" ${loud ? 'checked' : ''} ${ro ? 'disabled' : ''}><span></span></span></label>
       </div>
     </section>`;

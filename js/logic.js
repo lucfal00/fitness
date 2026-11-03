@@ -58,7 +58,7 @@ export function newId(prefix) {
 export function emptyDoc() {
   return {
     version: 1, exercises: [], exerciseEdits: {}, templates: [], programs: [], plan: {}, sessions: [], body: {},
-    settings: { theme: 'auto', kgStep: 2.5, rest: 90, sound: true, loud: false, lastBackup: 0 },
+    settings: { theme: 'auto', kgStep: 2.5, rest: 90, sound: true, loud: true, lastBackup: 0 },
   };
 }
 
