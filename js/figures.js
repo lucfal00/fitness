@@ -28,11 +28,11 @@ const FIGURES = {
   camminata: { view: 'side', ms: 650, k: [
     [100, 28, 100, 40, 100, 74, 94, 56, 92, 72, 106, 56, 110, 70, 108, 96, 116, 118, 94, 97, 86, 118],
     [100, 28, 100, 40, 100, 74, 106, 56, 110, 70, 94, 56, 92, 72, 94, 97, 86, 118, 108, 96, 116, 118]] },
-  rotazioni_spalle: { view: 'side', ms: 600, cycle: true, k: [
+  rotazioni_spalle: { view: 'side', ms: 600, cycle: true, k: [   // forward circles: front, down, back, up
     [100, 28, 100, 40, 100, 74, 112, 41, 125, 42, 112, 41, 125, 42, 101, 97, 100, 120, 99, 97, 100, 120],
-    [100, 28, 100, 40, 100, 74, 100, 28, 100, 15, 100, 28, 100, 15, 101, 97, 100, 120, 99, 97, 100, 120],
+    [100, 28, 100, 40, 100, 74, 100, 53, 100, 66, 100, 53, 100, 66, 101, 97, 100, 120, 99, 97, 100, 120],
     [100, 28, 100, 40, 100, 74, 88, 41, 75, 42, 88, 41, 75, 42, 101, 97, 100, 120, 99, 97, 100, 120],
-    [100, 28, 100, 40, 100, 74, 100, 53, 100, 66, 100, 53, 100, 66, 101, 97, 100, 120, 99, 97, 100, 120]] },
+    [100, 28, 100, 40, 100, 74, 100, 28, 100, 15, 100, 28, 100, 15, 101, 97, 100, 120, 99, 97, 100, 120]] },
   squat_corpo_libero: { view: 'side', ms: 1300, k: [
     [100, 28, 100, 40, 100, 74, 113, 41, 126, 42, 113, 41, 126, 42, 101, 97, 100, 120, 99, 97, 100, 120],
     [108, 50, 104, 62, 84, 92, 117, 62, 130, 63, 117, 62, 130, 63, 110, 95, 100, 120, 109, 96, 100, 120]] },
@@ -90,13 +90,15 @@ const ALIASES = { 'plank sugli avambracci': 'plank', 'ponte glutei': 'ponte_glut
   'y prona': 'y_prona', 'w prona': 'w_prona', 'wall slide': 'wall_slide', 'scivolamento al muro': 'wall_slide' };
 const BY_NAME = new Map(LIBRARY.map((e) => [norm(e.name), e.id.slice(4)]));
 
-/** Figure of an exercise (library id, or an own exercise with the same name), or null. */
-export function figureOf(doc, exId) {
+/** Figure of an exercise (library id, or an own exercise with the same name), or null. A circular movement plays
+ *  backwards when the item's note says so ("indietro", "antiorario"). */
+export function figureOf(doc, exId, note = '') {
   const slug = String(exId ?? '').startsWith('lib_') ? exId.slice(4) : null;
-  if (slug && FIGURES[slug]) return FIGURES[slug];
   const name = norm(resolveExercise(doc, exId)?.name);
-  const s = BY_NAME.get(name) ?? ALIASES[name];
-  return (s && FIGURES[s]) || null;
+  const s = slug && FIGURES[slug] ? slug : BY_NAME.get(name) ?? ALIASES[name];
+  const fig = (s && FIGURES[s]) || null;
+  if (!fig?.cycle || !/indietro|antiorario/i.test(note)) return fig;
+  return { ...fig, k: [...fig.k].reverse(), ...(fig.alt ? { alt: { ...fig.alt, k: [...fig.alt.k].reverse() } } : {}) };
 }
 
 const el = (p, t, a) => {

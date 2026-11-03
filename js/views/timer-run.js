@@ -1,33 +1,46 @@
 // "A tempo" (#timer/<sessionId>): full-screen player of a timed day. Countdown ring, phase colours, next step,
-// beeps and red colours in the last 5 seconds, a long beep at every change, pause, back and forward. Time comes from timestamps, so it stays right
-// after the app was in the background (steps that ended meanwhile are counted as done).
+// a beep in each of the last 3 seconds (red colours at the end of a circuit exercise), a beep halfway through exercises
+// longer than 30 s, a long beep at every change; pause, back and forward. Time comes from timestamps, so it stays right
+// after the app was in the background (steps that ended meanwhile are counted as done); beeps are scheduled on the audio
+// clock for the running step, so they fall exactly on the second.
 import { getDoc, updateSession, finishSession, discardSession, isReadOnly } from '../store.js';
 import { workoutLabel } from '../logic.js';
 import { resolveExercise } from '../library.js';
 import { timerSteps, totalSec, advance, clock, PART_LABELS } from '../interval.js';
-import { keepAwake, tone, unlockAudio, setAudioSession } from '../timer.js';
+import { keepAwake, unlockAudio, setAudioSession, scheduleTone, cancelTones } from '../timer.js';
 import { esc } from '../ui.js';
 import { figureOf, mountFigure } from '../figures.js';
 
 const PREP = 5;                       // "Preparati" seconds before the first step
-const WARN = 5;                       // last seconds of a step: a beep each second, colours turn red
+const WARN = 3;                       // last seconds of a step: a beep each second (red colours on circuit exercises)
+const HALF_FROM = 30;                 // exercises longer than this get a beep halfway
 const R = 108;                        // ring radius
 const C = 2 * Math.PI * R;
 
-let st = null;                        // { sid, steps, idx, startedAt, paused, leftMs, beeped, finished }
+let st = null;                        // { sid, steps, idx, startedAt, paused, leftMs, finished, started }
 let tick = 0;
+let raf = 0;
 let root = null;
 
 if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', () => {
     if (!location.hash.startsWith('#timer/')) leave();
   });
+  document.addEventListener('visibilitychange', () => {   // the audio clock stops in the background: schedule again
+    if (document.visibilityState === 'visible' && st && !st.paused && location.hash.startsWith('#timer/')) {
+      step();
+      schedule();
+    }
+  });
 }
 
 function leave() {
+  cancelTones();
   setAudioSession('auto');
   clearInterval(tick);
   tick = 0;
+  cancelAnimationFrame(raf);
+  raf = 0;
   keepAwake(false);
   document.body.classList.remove('timer-on');
 }
@@ -44,7 +57,7 @@ function buildSteps(s) {
 function init(s) {
   const steps = buildSteps(s);
   const idx = Math.min(Math.max(0, s.timer?.idx ?? 0), steps.length);
-  st = { sid: s.id, steps, idx, startedAt: Date.now(), paused: true, leftMs: (steps[idx]?.sec ?? 0) * 1000, beeped: 0, finished: false, started: idx > 0 };
+  st = { sid: s.id, steps, idx, startedAt: Date.now(), paused: true, leftMs: (steps[idx]?.sec ?? 0) * 1000, finished: false, started: idx > 0 };
 }
 
 // ---- Clock -------------------------------------------------------------------------
@@ -67,11 +80,17 @@ function saveIdx() {
   if (!isReadOnly()) updateSession(st.sid, (s) => { s.timer = { idx: st.idx }; });
 }
 
-function cue(changed) {
-  if (changed) {
-    tone(st.idx >= st.steps.length ? 660 : 1320, 0.5, 0.8);
-    navigator.vibrate?.(250);
-  }
+/** Beeps of the running step on the audio clock: halfway (exercises over 30 s), each of the last 3 seconds, and the
+ *  long change beep at its end (lower after the last step). Replaces whatever was scheduled. */
+function schedule() {
+  cancelTones();
+  if (!st || st.paused || st.finished) return;
+  const x = st.steps[st.idx];
+  const left = Math.max(0, leftMsNow()) / 1000;
+  if (x.type === 'work' && x.sec > HALF_FROM && left > x.sec / 2) scheduleTone(left - x.sec / 2);
+  for (let k = 1; k <= WARN; k++) if (left > k) scheduleTone(left - k);
+  const last = st.idx === st.steps.length - 1;
+  scheduleTone(left, last ? 660 : 1320, 0.5, 0.8);
 }
 
 function step() {
@@ -82,21 +101,16 @@ function step() {
   if (changed) {
     st.idx = r.idx;
     st.startedAt = r.startedAt;
-    st.beeped = 0;
     markDone(r.done);
     if (!r.done.length) saveIdx();
-    if (r.idx - old === 1) cue(true);                       // no sound when catching up after the background
+    if (r.idx - old === 1) navigator.vibrate?.(250);
+    schedule();                                              // the new step's beeps (its change beep already sounded)
   }
   if (r.finished) {
     st.finished = true;
     keepAwake(false);
     paint();
     return;
-  }
-  const left = r.left;
-  if (left <= WARN && left >= 1 && st.beeped !== left) {
-    st.beeped = left;
-    tone(880, 0.15, 0.7);
   }
   paint();
 }
@@ -110,11 +124,13 @@ function play() {
   st.paused = false;
   keepAwake(true);
   step();
+  schedule();
 }
 
 function pause() {
   st.leftMs = Math.max(0, leftMsNow());
   st.paused = true;
+  cancelTones();
   paint();
 }
 
@@ -123,9 +139,9 @@ function jump(k) {
   st.idx = Math.max(0, Math.min(k, st.steps.length - 1));
   st.startedAt = Date.now();
   st.leftMs = st.steps[st.idx].sec * 1000;
-  st.beeped = 0;
   saveIdx();
-  if (!st.paused) tone(1320, 0.3, 0.6);
+  if (!st.paused) scheduleTone(0, 1320, 0.3, 0.6);
+  schedule();
   paint();
 }
 
@@ -144,6 +160,7 @@ function forward() {
   while (k < st.steps.length && st.steps[k].type !== 'work') k++;
   if (k >= st.steps.length) {
     st.finished = true;
+    cancelTones();
     keepAwake(false);
     paint();
   } else jump(k);
@@ -174,9 +191,10 @@ function paintFigure(doc, s, box) {
   while (k < st.steps.length && st.steps[k].type !== 'work') k++;
   const w = st.steps[k];
   const ex = w ? s.items[w.i]?.ex : null;
-  const fig = ex ? figureOf(doc, ex) : null;
+  const note = w ? s.items[w.i]?.note ?? '' : '';
+  const fig = ex ? figureOf(doc, ex, note) : null;
   const holder = box.querySelector('.tr-fig');
-  const key = fig ? `${ex}` : '';
+  const key = fig ? `${ex}|${note}` : '';
   if (holder.dataset.key !== key) {
     holder.dataset.key = key;
     mountFigure(holder, fig);
@@ -210,7 +228,7 @@ function paint() {
   const ph = phase(x, rounds);
   box.dataset.phase = ph.key;
   box.classList.toggle('paused', st.paused);
-  box.classList.toggle('last', !st.paused && left <= WARN);
+  box.classList.toggle('last', !st.paused && left <= WARN && x.type === 'work' && x.part === 'main');
   box.querySelector('.tr-phase').textContent = ph.text;
   // During a pause (and the start) the next exercise is announced: its name, "Prossimo" and its note.
   let k = st.idx;
@@ -226,7 +244,6 @@ function paint() {
   }
   paintFigure(doc, s, box);
   box.querySelector('.tr-time').textContent = clock(left);
-  box.querySelector('.tr-ring-fg').style.strokeDashoffset = String(C * (1 - ms / (x.sec * 1000)));
   const nx = st.steps[st.idx + 1];
   box.querySelector('.tr-next').innerHTML = x.type !== 'work' && nx?.type === 'work'
     ? `<small>Durata</small><b>${esc(clock(nx.sec))}</b>`
@@ -234,13 +251,27 @@ function paint() {
     : '<small>Poi</small><b>Fine</b>';
   const done = st.steps.slice(0, st.idx).reduce((a, k) => a + k.sec, 0) + (x.sec - ms / 1000);
   const all = totalSec(st.steps);
-  box.querySelector('.tr-bar i').style.width = `${Math.min(100, (done / all) * 100)}%`;
   box.querySelector('.tr-total').textContent = `Rimangono ${clock(all - done)}`;
   const pp = box.querySelector('[data-act=toggle]');
   pp.innerHTML = st.paused ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>'
     : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>';
   pp.setAttribute('aria-label', st.paused ? (st.started ? 'Riprendi' : 'Inizia') : 'Pausa');
   box.querySelector('.tr-hint').hidden = st.started;
+}
+
+/** Ring and progress bar, every frame: smooth also on short steps (the 200 ms tick only updates the text). */
+function smooth() {
+  raf = 0;
+  if (!root || !st || st.finished || !root.isConnected) return;
+  const box = root.querySelector('.tr');
+  const x = st.steps[st.idx];
+  if (box && x) {
+    const ms = Math.max(0, leftMsNow());
+    box.querySelector('.tr-ring-fg').style.strokeDashoffset = String(C * (1 - ms / (x.sec * 1000)));
+    const done = st.steps.slice(0, st.idx).reduce((a, k) => a + k.sec, 0) + (x.sec - ms / 1000);
+    box.querySelector('.tr-bar i').style.width = `${Math.min(100, (done / totalSec(st.steps)) * 100)}%`;
+  }
+  raf = requestAnimationFrame(smooth);
 }
 
 function save() {
@@ -294,7 +325,7 @@ export function render(el, { doc, param }) {
           <circle class="tr-ring-fg" cx="120" cy="120" r="${R}" stroke-dasharray="${C}" transform="rotate(-90 120 120)"/></svg>
         <div class="tr-time" role="timer" aria-live="off"></div>
       </div>
-      <p class="tr-hint">Tocca ▶ per iniziare. Alza il volume e togli il silenzioso: senti un bip negli ultimi 5 secondi e a ogni cambio.</p>
+      <p class="tr-hint">Tocca ▶ per iniziare. Alza il volume: senti un bip negli ultimi 3 secondi e a ogni cambio.</p>
       <div class="tr-next"></div>
     </div>
     <footer class="tr-foot">
@@ -326,4 +357,6 @@ export function render(el, { doc, param }) {
   tick = setInterval(step, 200);
   if (!st.paused) keepAwake(true);
   paint();
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(smooth);
 }

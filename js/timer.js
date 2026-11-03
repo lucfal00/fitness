@@ -113,6 +113,39 @@ export function tone(freq = 880, dur = 0.15, vol = 0.25) {
   } catch { /* ignore */ }
 }
 
+// Tones scheduled ahead on the audio clock: exact to the millisecond, unlike page timers (which iOS delays).
+const scheduled = new Set();          // { osc, at }
+
+/** Tone at `delaySec` from now on the audio clock; silent when audio is locked or unavailable. */
+export function scheduleTone(delaySec, freq = 880, dur = 0.15, vol = 0.7) {
+  try {
+    if (!ctx) return;
+    if (ctx.state !== 'running') ctx.resume().catch(() => {});
+    const at = ctx.currentTime + Math.max(0, delaySec);
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, at);
+    gain.gain.exponentialRampToValueAtTime(0.001, at + dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(at);
+    osc.stop(at + dur);
+    const item = { osc, at };
+    scheduled.add(item);
+    osc.onended = () => scheduled.delete(item);
+  } catch { /* ignore */ }
+}
+
+/** Cancel the scheduled tones that have not started yet (one already sounding finishes). */
+export function cancelTones() {
+  const now = ctx ? ctx.currentTime : 0;
+  for (const item of scheduled) {
+    if (item.at <= now) continue;
+    try { item.osc.stop(); } catch { /* already stopped */ }
+    scheduled.delete(item);
+  }
+}
+
 function play() {
   try {
     for (const at of [0, 0.25]) {

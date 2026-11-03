@@ -578,7 +578,7 @@ body.timer-on main { padding: 0; max-width: none; }
 .tr-ring svg { width: 100%; height: 100%; display: block; }
 .tr-ring circle { fill: none; stroke-width: 12; }
 .tr-ring-bg { stroke: var(--track); }
-.tr-ring-fg { stroke: var(--ph); stroke-linecap: round; transition: stroke-dashoffset .2s linear, stroke .5s ease; }
+.tr-ring-fg { stroke: var(--ph); stroke-linecap: round; transition: stroke .5s ease; }
 .tr-time { position: absolute; inset: 0; display: grid; place-items: center; font-size: clamp(3.2rem, 17vw, 5.4rem); font-weight: 800;
   font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
 .tr.last { --ph: #ef4444; }                       /* last seconds: colours turn red, the background keeps its phase */
@@ -617,7 +617,7 @@ body.timer-on main { padding: 0; max-width: none; }
 .tr-play:active { transform: scale(.94); }
 .tr.paused .tr-play { background: var(--ph); color: #fff; }
 .tr-bar { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
-.tr-bar i { display: block; height: 100%; background: var(--ph); border-radius: 3px; transition: width .2s linear; }
+.tr-bar i { display: block; height: 100%; background: var(--ph); border-radius: 3px; }
 .tr-total { margin: 0; text-align: center; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
 .tr-done { display: grid; gap: 10px; justify-items: center; width: min(100%, 340px); }
 .tr-done h2 { margin: 0; font-size: 2.4rem; }
