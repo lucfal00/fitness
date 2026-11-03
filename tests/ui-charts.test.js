@@ -599,3 +599,25 @@ test('store: timed day saves its type and starts a timed session; switching back
   s.saveSchedaDay(tid, { mode: 'normal', items: [] });
   assert.deepEqual([t.mode, t.rounds, t.roundRest], [undefined, undefined, undefined]);
 });
+
+test('store: activities are concluded one-set sessions; update moves the end; library lists cardio and sport', async () => {
+  const s = await freshStore(memStorage());
+  const { listActivities, isActivity, activityEmoji, resolveExercise } = await import('../js/library.js');
+  const doc = s.getDoc();
+  const acts = listActivities(doc);
+  assert.ok(acts.some((e) => e.id === 'lib_corsa') && acts.some((e) => e.id === 'lib_calcio') && acts.some((e) => e.id === 'lib_tennis'));
+  assert.ok(!acts.some((e) => e.kind === 'weight' || e.kind === 'body' || e.id === 'lib_marcia_sul_posto'));
+  assert.equal(isActivity(resolveExercise(doc, 'lib_squat')), false);
+  assert.equal(activityEmoji(resolveExercise(doc, 'lib_tennis')), '🎾');
+  assert.equal(s.addActivity({ ex: 'lib_corsa', sec: 0 }), null);
+  const id = s.addActivity({ date: '2026-10-01', ex: 'lib_corsa', sec: 1800, km: 5 });
+  const a = doc.sessions.find((x) => x.id === id);
+  assert.equal(a.end - a.start, 1800 * 1000);
+  assert.equal(new Date(a.start).getHours(), 12);
+  assert.deepEqual([a.act, a.tpl, a.items[0].sets[0].sec, a.items[0].sets[0].km, a.items[0].sets[0].done], [true, null, 1800, 5, true]);
+  s.updateActivity(id, { sec: 2400, km: 0, note: 'ok' });
+  assert.deepEqual([a.end - a.start, a.items[0].sets[0].km, a.note], [2400 * 1000, null, 'ok']);
+  const t = s.addActivity({ ex: 'lib_tennis', sec: 3600 });
+  const b = doc.sessions.find((x) => x.id === t);
+  assert.ok(Math.abs(b.end - Date.now()) < 5000);
+});

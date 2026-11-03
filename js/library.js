@@ -143,6 +143,7 @@ const BODY = [
   ['torsione_sdraiato', 'Torsione da sdraiato', 'dorso', ['glutei'], 'time'],
   ['respiro_in_piedi', 'Respiro in piedi con le braccia', 'addome', [], 'time'],
   ['respiro_sdraiato', 'Respiro a pancia in su', 'addome', [], 'time'],
+  ['marcia_cerchi_spalle', 'Marcia con cerchi delle spalle', 'spalle', ['polpacci'], 'time'],
   ['plank', 'Plank', 'addome', ['spalle'], 'time'],
   ['plank_laterale', 'Plank laterale', 'addome', ['spalle'], 'time'],
   ['wall_sit', 'Wall sit', 'quadricipiti', ['glutei'], 'time'],
@@ -157,7 +158,6 @@ const CARDIO = [
   ['corsa', 'Corsa'],
   ['camminata', 'Camminata'],
   ['marcia_sul_posto', 'Marcia sul posto'],
-  ['marcia_cerchi_spalle', 'Marcia con cerchi delle spalle'],
   ['bici', 'Bici'],
   ['cyclette', 'Cyclette'],
   ['tapis_roulant', 'Tapis roulant'],
@@ -168,6 +168,7 @@ const CARDIO = [
 ];
 
 const SPORT = [
+  ['calcio', 'Calcio'],
   ['calcetto', 'Calcetto'],
   ['padel', 'Padel'],
   ['tennis', 'Tennis'],
@@ -187,6 +188,20 @@ export const LIBRARY = [
 
 const BY_ID = new Map(LIBRARY.map((e) => [e.id, e]));
 
+// ---- Activities (cardio and sport, logged with a duration and, for cardio, a distance) ----
+
+const ACT_EMOJI = {
+  corsa: '🏃', camminata: '🚶', bici: '🚴', cyclette: '🚴', tapis_roulant: '🏃', ellittica: '🏃', vogatore: '🚣',
+  nuoto: '🏊', salto_corda: '🤸', calcio: '⚽', calcetto: '⚽', padel: '🎾', tennis: '🎾', basket: '🏀',
+  pallavolo: '🏐', arrampicata: '🧗', yoga: '🧘', pilates: '🧘',
+};
+const NOT_ACTIVITIES = new Set(['lib_marcia_sul_posto']);   // warm-up moves, not something one goes out to do
+
+export const isActivity = (ex) => !!ex && (ex.kind === 'cardio' || ex.kind === 'sport') && !NOT_ACTIVITIES.has(ex.id);
+
+/** Emoji of an activity (by library id), a generic one otherwise. */
+export const activityEmoji = (ex) => ACT_EMOJI[String(ex?.id ?? '').replace(/^lib_/, '')] ?? (ex?.kind === 'sport' ? '🏅' : '🏃');
+
 /** Exercise by id: own (even if deleted, for history), else library + edits; null if unknown. */
 export function resolveExercise(doc, id) {
   const own = doc.exercises.find((e) => e.id === id);
@@ -200,6 +215,9 @@ export function resolveExercise(doc, id) {
   if (edit.hidden != null) out.hidden = edit.hidden;
   return out;
 }
+
+/** Activities one can log (cardio and sport, library and own), sorted by name. */
+export const listActivities = (doc) => listExercises(doc).filter(isActivity);
 
 /** Library + own exercises, sorted by name; deleted always out, hidden out unless requested. */
 export function listExercises(doc, { hidden = false } = {}) {

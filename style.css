@@ -630,3 +630,11 @@ body.timer-on main { padding: 0; max-width: none; }
 .timed-ex.part-warm { --part: #f59e0b; }
 .timed-ex.part-main { --part: #2fbf5b; }
 .timed-ex.part-cool { --part: #a78bfa; }
+
+/* ---- Activities (cardio and sport) ------------------------------------------ */
+.act-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.act-pick { display: flex; align-items: center; gap: 10px; justify-content: flex-start; min-height: 52px; text-align: left; }
+.act-emoji { font-size: 1.4rem; line-height: 1; }
+.quick-min { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 4px; }
+button.sess-card { width: 100%; text-align: left; font: inherit; color: inherit; border: 0; cursor: pointer; }
+.past-add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }

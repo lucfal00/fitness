@@ -563,6 +563,43 @@ export function discardSession(id) {
   save('session', id);
 }
 
+/** Activity (cardio / sport) logged with its duration (s) and optional km: a concluded session of one done set.
+ *  Today it ends now; on another day it starts at 12:00. Returns the id. */
+export function addActivity({ date = todayKey(), ex, sec, km = null, note = '' }) {
+  if (readOnly || !ex || !(sec > 0)) return null;
+  const id = newId('s_');
+  let start;
+  if (date === todayKey()) start = now() - sec * 1000;
+  else {
+    const d = fromKey(date);
+    d.setHours(12, 0, 0, 0);
+    start = d.getTime();
+  }
+  doc.sessions.push({
+    id, date, start, end: start + sec * 1000, tpl: null, rot: null, rpe: null, note: String(note ?? '').slice(0, 500), act: true,
+    deleted: false, updatedAt: now(),
+    items: [{ ex, group: null, note: '', sets: [{ w: false, kg: null, reps: null, sec, km: km > 0 ? km : null, rpe: null, done: true }] }],
+  });
+  save('session', id);
+  return id;
+}
+
+/** Change an activity's duration (s), km and note; the end moves with the duration. */
+export function updateActivity(id, { sec, km = null, note = '' }) {
+  if (readOnly || !(sec > 0)) return;
+  const s = find(doc.sessions, id);
+  if (!s || s.deleted || !s.items[0]) return;
+  const set = s.items[0].sets[0] ?? (s.items[0].sets[0] = { w: false, kg: null, reps: null, rpe: null });
+  Object.assign(set, { sec, km: km > 0 ? km : null, done: true });
+  s.items[0].sets = [set];
+  s.items = [s.items[0]];
+  s.end = s.start + sec * 1000;
+  s.note = String(note ?? '').slice(0, 500);
+  s.act = true;
+  s.updatedAt = now();
+  save('session', id);
+}
+
 /** Past workout entered by hand: starts at 12:00 of the day, lasts `minutes`; sets are marked done. */
 export function addPastSession({ date, tpl = null, minutes = 60 }) {
   if (readOnly) return null;

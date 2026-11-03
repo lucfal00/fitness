@@ -3,11 +3,12 @@ import {
   todayKey, addDays, weekStart, isConcluded, isDate, workoutLabel, isScheda, usable, schedaDays, schedaGroups, lastDayOf,
   choosableDays, choosableList,
 } from '../logic.js';
-import { resolveExercise } from '../library.js';
+import { resolveExercise, listActivities, isActivity, activityEmoji } from '../library.js';
 import { isTimed } from '../interval.js';
-import { estimateMinutes, sessionVolume, sessionRecords } from '../metrics.js';
+import { estimateMinutes, sessionVolume, sessionRecords, pace } from '../metrics.js';
 import {
   startSession, finishSession, addPastSession, openSessionId, setBody, isReadOnly, getDoc, getSync, exportBackup,
+  addActivity, updateActivity, discardSession,
 } from '../store.js';
 import { unlockAudio, skipRest } from '../timer.js';
 import { esc, safeColor, fmtDay, fmtKg, fmtNum, parseNum, fmtFull, DAY_LETTERS } from '../ui.js';
@@ -21,7 +22,16 @@ const sessionHash = (id) => `#sessione/${encodeURIComponent(id)}`;
 /** Live timed workouts open in the timer, everything else in the session screen. */
 const liveHash = (s) => (s.mode === 'timer' && s.end == null ? `#timer/${encodeURIComponent(s.id)}` : sessionHash(s.id));
 
+/** The activity (cardio / sport exercise) a session records, or null for a workout. */
+function activityOf(doc, s) {
+  if (s.tpl != null || s.items.length !== 1) return null;
+  const ex = resolveExercise(doc, s.items[0].ex);
+  return isActivity(ex) ? ex : null;
+}
+
 function look(doc, s) {
+  const act = activityOf(doc, s);
+  if (act) return { name: act.name, emoji: activityEmoji(act), color: safeColor(null) };
   const t = tplOf(doc, s.tpl);
   return { name: workoutLabel(doc, s.tpl), emoji: t ? t.emoji || '💪' : '🏋️', color: safeColor(t?.color) };
 }
@@ -95,7 +105,20 @@ function openCard(doc, s) {
   </section>`;
 }
 
+function activityCard(doc, s, act) {
+  const set = s.items[0].sets[0] ?? {};
+  const sec = set.sec ?? Math.round((s.end - s.start) / 1000);
+  const p = set.km > 0 && sec > 0 ? pace(sec, set.km) : null;
+  const meta = [fmtMinutes(sec * 1000), set.km > 0 ? `${fmtKg(set.km)} km` : '', p ? `${p}/km` : ''].filter(Boolean).join(' · ');
+  return `<button type="button" class="card sess-card act-card" data-act="act-edit" data-id="${esc(s.id)}" style="--c:${safeColor(null)}">
+    <span class="badge" aria-hidden="true">${esc(activityEmoji(act))}</span>
+    <span class="grow"><b>${esc(act.name)} <span class="status ok">✓</span></b><small class="muted">${esc(meta)}</small></span>
+    <span class="chev" aria-hidden="true">›</span></button>`;
+}
+
 function doneCard(doc, s) {
+  const act = activityOf(doc, s);
+  if (act) return activityCard(doc, s, act);
   const l = look(doc, s);
   const vol = sessionVolume(doc, s);
   const { done, total } = setCounts(s);
@@ -131,26 +154,73 @@ function backupNotice(doc) {
 
 // ---- Sheets -----------------------------------------------------------------------------
 
-function tplButton(t, label, tag = '') {
-  return `<button type="button" class="btn choice-btn" data-tpl="${esc(t.id)}"><span class="badge" style="--c:${safeColor(t.color)}"
-    aria-hidden="true">${esc(t.emoji || '💪')}</span><span class="grow">${esc(label)}</span>${tag ? `<span class="pill">${esc(tag)}</span>` : ''}</button>`;
-}
+// ---- Activities ------------------------------------------------------------------------
 
-/** "Allenati comunque" / "Altro allenamento": schede with their days, or a free workout. */
-function openPicker(doc, today) {
-  const { groups, loose } = choosableDays(doc, today);
-  const { box, close } = openSheet(`<h2>Scegli l’allenamento</h2>
-    ${groups.map(({ p, days }) => `<h3 class="sheet-sub">${esc(p.emoji || '💪')} ${esc(p.name)}</h3>
-      ${days.length ? days.map((t) => tplButton(t, t.dayName ?? t.name)).join('')
-    : '<p class="muted">Nessun giorno in questa scheda.</p>'}`).join('')}
-    ${loose.map((t) => tplButton(t, t.name)).join('')}
-    <button type="button" class="btn choice-btn" data-tpl=""><span class="badge" aria-hidden="true">🏋️</span><span>Allenamento libero</span></button>
+const QUICK_MIN = [15, 30, 45, 60, 90];
+const DEC = /^\d+([.,]\d+)?$/;
+
+/** "Aggiungi attività": cardio and sport in one list; a tap opens the form. */
+function openActivityPicker(day) {
+  const doc = getDoc();
+  const list = listActivities(doc);
+  const { box, close } = openSheet(`<h2>Aggiungi attività</h2>
+    <div class="act-grid">${list.map((ex) => `<button type="button" class="btn act-pick" data-ex="${esc(ex.id)}">
+      <span class="act-emoji" aria-hidden="true">${esc(activityEmoji(ex))}</span><span>${esc(ex.name)}</span></button>`).join('')}</div>
     <button type="button" class="btn center" data-act="cancel">Annulla</button>`);
   box.onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     close();
-    if ('tpl' in b.dataset) start(b.dataset.tpl || null);
+    if (b.dataset.ex) openActivityForm(day, resolveExercise(getDoc(), b.dataset.ex));
+  };
+}
+
+/** Duration (minutes), km (cardio only) and note; with `s` it edits / deletes that activity. */
+function openActivityForm(day, ex, s = null) {
+  if (!ex) return;
+  const set = s?.items[0]?.sets[0] ?? {};
+  const min = s ? Math.round((set.sec ?? (s.end - s.start) / 1000) / 60) : '';
+  const km = set.km > 0 ? fmtKg(set.km) : '';
+  const withKm = ex.kind === 'cardio';
+  const { box, close } = openSheet(`<h2><span aria-hidden="true">${esc(activityEmoji(ex))}</span> ${esc(ex.name)}</h2>
+    <p class="muted">${esc(fmtDay(s ? s.date : day))}</p>
+    <form class="form" novalidate>
+      <label class="field">Durata (minuti)<input name="min" type="text" inputmode="numeric" value="${esc(min)}" placeholder="es. 30" autocomplete="off"></label>
+      <div class="chips quick-min">${QUICK_MIN.map((m) => `<button type="button" class="chip" data-min="${m}">${m}′</button>`).join('')}</div>
+      ${withKm ? `<label class="field">Distanza (km, facoltativa)<input name="km" type="text" inputmode="decimal" value="${esc(km)}" placeholder="es. 5" autocomplete="off"></label>` : ''}
+      <label class="field">Nota (facoltativa)<input name="note" type="text" maxlength="200" value="${esc(s?.note ?? '')}" autocomplete="off"></label>
+      <p class="error" role="alert" hidden></p>
+      <button class="btn primary center" type="submit">Salva</button>
+      ${s ? '<button class="btn danger center" type="button" data-act="del">Elimina</button>' : ''}
+      <button class="btn center" type="button" data-act="cancel">Annulla</button>
+    </form>`);
+  const form = box.querySelector('form');
+  const err = (m) => {
+    const p = form.querySelector('.error');
+    p.textContent = m;
+    p.hidden = false;
+  };
+  form.onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.min) form.min.value = b.dataset.min;
+    else if (b.dataset.act === 'cancel') close();
+    else if (b.dataset.act === 'del' && confirm(`Eliminare ${ex.name}?`)) {
+      discardSession(s.id);
+      close();
+    }
+  };
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const m = form.min.value.trim();
+    if (!/^\d+$/.test(m) || +m < 1 || +m > 600) { err('Inserisci una durata da 1 a 600 minuti.'); return; }
+    const k = withKm ? form.km.value.trim() : '';
+    if (k && (!DEC.test(k) || parseNum(k) <= 0 || parseNum(k) > 500)) { err('La distanza deve essere un numero di km maggiore di 0.'); return; }
+    const fields = { sec: +m * 60, km: k ? Math.round(parseNum(k) * 100) / 100 : null, note: form.note.value.trim() };
+    if (isReadOnly()) { err('Modalità sola lettura: impossibile salvare.'); return; }
+    if (s) updateActivity(s.id, fields);
+    else addActivity({ date: day, ex: ex.id, ...fields });
+    close();
   };
 }
 
@@ -258,7 +328,7 @@ export function render(el, { doc, param, today }) {
     main = `<div class="card empty"><p>Nessuna scheda ancora.</p>
       <p class="muted">Crea una scheda con i tuoi giorni di allenamento (Giorno 1, 2, 3…) e il suo periodo.</p>
       <div class="btn-row center"><a class="btn primary" href="#scheda/nuova">Crea la tua prima scheda</a>
-      <button type="button" class="btn" data-act="free" ${ro ? 'disabled' : ''}>Allenamento libero</button></div></div>`;
+      <button type="button" class="btn" data-act="pick" ${ro ? 'disabled' : ''}>Aggiungi attività</button></div></div>`;
   } else if (isToday) {
     main = running.map((p) => schedaCard(doc, p, ro)).join('');
     if (!running.length) {
@@ -266,7 +336,7 @@ export function render(el, { doc, param, today }) {
         <div class="grow"><b>Nessuna scheda in corso</b><small class="muted">Controlla le date delle tue schede.</small></div></div>
         <div class="card-actions"><a class="btn" href="#schede">Vai alle schede</a></div></section>`;
     }
-    main += `<button type="button" class="btn block other-btn" data-act="pick" ${ro ? 'disabled' : ''}>+ Altro allenamento</button>`;
+    main += `<button type="button" class="btn block other-btn" data-act="pick" ${ro ? 'disabled' : ''}>+ Attività: corsa, bici, sport…</button>`;
   } else if (future) {                             // a day ahead: what will be in progress, nothing to start yet
     const later = schedaGroups(doc, day).running;
     main = later.length
@@ -287,7 +357,8 @@ export function render(el, { doc, param, today }) {
     ${openSessions.map((s) => openCard(doc, s)).join('')}
     ${main}
     ${doneToday.length ? `<h2 class="list-title">${isToday ? 'Fatti oggi' : 'Allenamenti fatti'}</h2>${doneToday.map((s) => doneCard(doc, s)).join('')}` : ''}
-    ${isToday || future ? '' : `<button type="button" class="btn block add-past" data-act="addpast" ${ro ? 'disabled' : ''}>+ Aggiungi allenamento</button>`}
+    ${isToday || future ? '' : `<div class="btn-row past-add"><button type="button" class="btn" data-act="addpast" ${ro ? 'disabled' : ''}>+ Allenamento della scheda</button>
+      <button type="button" class="btn" data-act="pick" ${ro ? 'disabled' : ''}>+ Attività</button></div>`}
     ${future ? '' : weightCard(doc, day, ro)}`;
 
   el.onclick = async (e) => {
@@ -298,10 +369,10 @@ export function render(el, { doc, param, today }) {
     else if (act === 'next') go(addDays(day, 1), today);
     else if (act === 'today') go(today, today);
     else if (act === 'start') start(b.dataset.tpl);
-    else if (act === 'free') start(null);
-    else if (act === 'pick') {
-      unlockAudio();
-      openPicker(doc, today);
+    else if (act === 'pick') openActivityPicker(day);
+    else if (act === 'act-edit') {
+      const s = getDoc().sessions.find((x) => x.id === b.dataset.id);
+      if (s) openActivityForm(day, resolveExercise(getDoc(), s.items[0]?.ex), s);
     } else if (act === 'addpast') openAddPast(doc, day, today, b.dataset.tpl ?? null);
     else if (act === 'backup') {
       try { await exportBackup(); } catch { /* retry from Impostazioni */ }
