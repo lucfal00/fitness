@@ -26,13 +26,10 @@ function look(doc, s) {
   return { name: workoutLabel(doc, s.tpl), emoji: t ? t.emoji || '💪' : '🏋️', color: safeColor(t?.color) };
 }
 
-/** Selected day from the route: a valid date not after today, else today. */
-function dayOf(param, today) {
-  if (!isDate(param)) return today;
-  return param <= today ? param : today;
-}
+/** Selected day from the route: a valid date (past or future), else today. */
+const dayOf = (param, today) => (isDate(param) ? param : today);
 
-const go = (d, today) => location.replace(d >= today ? '#oggi' : `#oggi/${d}`);
+const go = (d, today) => location.replace(d === today ? '#oggi' : `#oggi/${d}`);
 
 // ---- Week strip -------------------------------------------------------------------
 
@@ -52,17 +49,16 @@ function weekStrip(doc, day, today) {
     const inner = `${L}<b>${+d.slice(8)}</b><span class="dots">${dots.slice(0, 4)
       .map((c) => `<i class="done" style="--c:${c}"></i>`).join('')}</span>`;
     const cls = `day${d === day ? ' sel' : ''}${d === today ? ' now' : ''}`;
-    return d > today
-      ? `<span class="${cls} future" aria-label="${esc(label)}">${inner}</span>`
-      : `<a class="${cls}" href="${d === today ? '#oggi' : `#oggi/${d}`}" aria-label="${esc(label)}"
+    return `<a class="${cls}${d > today ? ' future' : ''}" href="${d === today ? '#oggi' : `#oggi/${d}`}" aria-label="${esc(label)}"
           ${d === day ? 'aria-current="date"' : ''}>${inner}</a>`;
   }).join('')}</nav>`;
 }
 
 // ---- Cards ---------------------------------------------------------------------------
 
-/** Scheda in progress: its days as buttons; the one trained last is marked. */
-function schedaCard(doc, p, ro) {
+/** Scheda in progress: its days as buttons; the one trained last is marked. `preview` (a future day): the days are
+ *  listed without starting anything. */
+function schedaCard(doc, p, ro, preview = false) {
   const days = schedaDays(doc, p).filter((t) => usable(doc, t.id));
   const lastId = lastDayOf(doc, p);
   const last = days.find((t) => t.id === lastId);
@@ -74,15 +70,16 @@ function schedaCard(doc, p, ro) {
     const meta = isTimed(t)
       ? `⏱ A tempo · ${t.rounds ?? 1} ${(t.rounds ?? 1) === 1 ? 'giro' : 'giri'}${mins > 0 ? ` · ${mins} min` : ''}`
       : `${n} ${n === 1 ? 'esercizio' : 'esercizi'}${mins > 0 ? ` · ~${mins} min` : ''}`;
+    const body = `<span class="grow"><b>${esc(t.dayName ?? t.name)}</b><small class="muted">${esc(meta)}</small></span>`;
+    if (preview) return `<div class="btn choice-btn day-btn preview">${body}</div>`;
     return `<button type="button" class="btn choice-btn day-btn" data-act="start" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>
-      <span class="grow"><b>${esc(t.dayName ?? t.name)}</b><small class="muted">${esc(meta)}</small></span>
-      ${t.id === lastId && days.length > 1 ? '<span class="pill">Ultimo fatto</span>' : ''}${days.length === 1 ? '<span class="day-go" aria-hidden="true">▶</span>' : ''}</button>`;
+      ${body}${t.id === lastId && days.length > 1 ? '<span class="pill">Ultimo fatto</span>' : ''}${days.length === 1 ? '<span class="day-go" aria-hidden="true">▶</span>' : ''}</button>`;
   };
   return `<section class="card tpl-card" style="--c:${safeColor(p.color)}">
     <div class="head"><span class="badge" aria-hidden="true">${esc(p.emoji || '💪')}</span>
       <div class="grow"><b>${esc(p.name)}</b><small class="muted">${esc(sub)}</small></div>
       <a class="btn small" href="#scheda/${encodeURIComponent(p.id)}" aria-label="Modifica ${esc(p.name)}">Modifica</a></div>
-    ${days.length ? `${days.length > 1 ? '<p class="muted day-ask">Che giorno fai?</p>' : ''}<div class="day-btns">${days.map(btn).join('')}</div>`
+    ${days.length ? `${days.length > 1 && !preview ? '<p class="muted day-ask">Che giorno fai?</p>' : ''}<div class="day-btns">${days.map(btn).join('')}</div>`
     : `<p class="muted">Nessun giorno con esercizi: <a href="#scheda/${encodeURIComponent(p.id)}">aggiungili</a>.</p>`}
   </section>`;
 }
@@ -249,7 +246,8 @@ export function render(el, { doc, param, today }) {
   const day = dayOf(param, today);
   const ro = isReadOnly();
   const isToday = day === today;
-  const title = isToday ? 'Oggi' : day === addDays(today, -1) ? 'Ieri' : fmtDay(day).split(' ')[0];
+  const future = day > today;
+  const title = isToday ? 'Oggi' : day === addDays(today, -1) ? 'Ieri' : day === addDays(today, 1) ? 'Domani' : fmtDay(day).split(' ')[0];
   const openSessions = doc.sessions.filter((s) => !s.deleted && s.end == null).sort((a, b) => b.start - a.start);
   const doneToday = doc.sessions.filter((s) => isConcluded(s) && s.date === day).sort((a, b) => a.start - b.start);
   const { running } = schedaGroups(doc, today);
@@ -269,6 +267,12 @@ export function render(el, { doc, param, today }) {
         <div class="card-actions"><a class="btn" href="#schede">Vai alle schede</a></div></section>`;
     }
     main += `<button type="button" class="btn block other-btn" data-act="pick" ${ro ? 'disabled' : ''}>+ Altro allenamento</button>`;
+  } else if (future) {                             // a day ahead: what will be in progress, nothing to start yet
+    const later = schedaGroups(doc, day).running;
+    main = later.length
+      ? `${later.map((p) => schedaCard(doc, p, ro, true)).join('')}<p class="muted center-note">Potrai iniziare l’allenamento quel giorno.</p>`
+      : `<section class="card rest-card"><div class="head"><span class="badge" aria-hidden="true">📅</span>
+        <div class="grow"><b>Nessuna scheda in corso</b><small class="muted">In questo giorno non c’è una scheda attiva.</small></div></div></section>`;
   }
 
   el.innerHTML = `
@@ -276,15 +280,15 @@ export function render(el, { doc, param, today }) {
       <button type="button" class="icon-btn" data-act="prev" aria-label="Giorno precedente">‹</button>
       <div class="grow"><h1>${esc(title)}</h1><small>${esc(fmtDay(day))}</small></div>
       ${isToday ? '' : '<button type="button" class="btn small today-btn" data-act="today" aria-label="Torna a oggi">Oggi</button>'}
-      <button type="button" class="icon-btn" data-act="next" aria-label="Giorno successivo" ${isToday ? 'disabled' : ''}>›</button>
+      <button type="button" class="icon-btn" data-act="next" aria-label="Giorno successivo">›</button>
     </header>
     ${weekStrip(doc, day, today)}
     ${backupNotice(doc)}
     ${openSessions.map((s) => openCard(doc, s)).join('')}
     ${main}
     ${doneToday.length ? `<h2 class="list-title">${isToday ? 'Fatti oggi' : 'Allenamenti fatti'}</h2>${doneToday.map((s) => doneCard(doc, s)).join('')}` : ''}
-    ${isToday ? '' : `<button type="button" class="btn block add-past" data-act="addpast" ${ro ? 'disabled' : ''}>+ Aggiungi allenamento</button>`}
-    ${weightCard(doc, day, ro)}`;
+    ${isToday || future ? '' : `<button type="button" class="btn block add-past" data-act="addpast" ${ro ? 'disabled' : ''}>+ Aggiungi allenamento</button>`}
+    ${future ? '' : weightCard(doc, day, ro)}`;
 
   el.onclick = async (e) => {
     const b = e.target.closest('[data-act]');
@@ -313,5 +317,5 @@ export function render(el, { doc, param, today }) {
     else e.target.value = doc.body[day]?.kg != null ? fmtKg(doc.body[day].kg) : '';
   };
   const bw = el.querySelector('#bw');
-  bw.onkeydown = (e) => { if (e.key === 'Enter') bw.blur(); };
+  if (bw) bw.onkeydown = (e) => { if (e.key === 'Enter') bw.blur(); };
 }

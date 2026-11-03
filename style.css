@@ -192,6 +192,8 @@ textarea { resize: vertical; }
 .day-btns { display: grid; gap: 8px; }
 .day-btn { text-align: left; min-height: 52px; }
 .day-btn small { display: block; }
+.day-btn.preview { cursor: default; opacity: .75; }
+.center-note { text-align: center; margin: 4px 0 12px; font-size: .9rem; }
 .day-go { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--accent-strong); color: var(--on-accent); font-size: .85rem; padding-left: 2px; }
 .tpl-card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: .9rem; }
 .badge {
@@ -203,7 +205,7 @@ textarea { resize: vertical; }
 .tile { text-align: center; padding: 14px 6px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .tile b { display: block; font-size: 1.6rem; letter-spacing: -.02em; }
 .tile small { display: block; }
-.week .day.future { opacity: .45; }
+.week .day.future { opacity: .6; }
 .tpl-card .head .grow { flex: 1; min-width: 0; }
 .tpl-card .head small { display: block; }
 .card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
