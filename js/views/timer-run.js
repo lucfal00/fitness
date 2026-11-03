@@ -178,14 +178,25 @@ function paint() {
   box.classList.toggle('paused', st.paused);
   box.classList.toggle('last', !st.paused && left <= 3);
   box.querySelector('.tr-phase').textContent = ph.text;
-  box.querySelector('.tr-name').textContent = label(doc, s, x);
-  box.querySelector('.tr-note').textContent = x.type === 'work' ? s.items[x.i]?.note ?? '' : '';
+  // During a pause (and the start) the next exercise is announced: its name, "Prossimo" and its note.
+  let k = st.idx;
+  while (k < st.steps.length && st.steps[k].type !== 'work') k++;
+  const w = st.steps[k];
+  const note = (it) => it?.note ?? '';
+  if (x.type === 'work' || !w) {
+    box.querySelector('.tr-name').textContent = label(doc, s, x);
+    box.querySelector('.tr-note').textContent = x.type === 'work' ? note(s.items[x.i]) : '';
+  } else {
+    box.querySelector('.tr-name').textContent = exName(doc, s, w.i);
+    box.querySelector('.tr-note').textContent = ['Prossimo', note(s.items[w.i])].filter(Boolean).join(' · ');
+  }
   paintFigure(doc, s, box);
   box.querySelector('.tr-time').textContent = clock(left);
   box.querySelector('.tr-ring-fg').style.strokeDashoffset = String(C * (1 - ms / (x.sec * 1000)));
   const nx = st.steps[st.idx + 1];
-  box.querySelector('.tr-next').innerHTML = nx
-    ? `<small>Poi</small><b>${esc(label(doc, s, nx))}</b><span>${esc(clock(nx.sec))}</span>`
+  box.querySelector('.tr-next').innerHTML = x.type !== 'work' && nx?.type === 'work'
+    ? `<small>Durata</small><b>${esc(clock(nx.sec))}</b>`
+    : nx ? `<small>Poi</small><b>${esc(label(doc, s, nx))}</b><span>${esc(clock(nx.sec))}</span>`
     : '<small>Poi</small><b>Fine</b>';
   const done = st.steps.slice(0, st.idx).reduce((a, k) => a + k.sec, 0) + (x.sec - ms / 1000);
   const all = totalSec(st.steps);

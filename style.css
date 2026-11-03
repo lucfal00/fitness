@@ -585,7 +585,8 @@ body.timer-on main { padding: 0; max-width: none; }
 .tr-fig { position: relative; display: flex; flex-direction: column; align-items: center; max-width: 100%; margin: 2px 0; transition: opacity .3s ease; }
 .tr-fig svg { display: block; height: min(19vh, 170px); width: auto; max-width: min(86vw, 420px); }
 .tr-fig small { margin-top: 2px; color: var(--muted); font-size: .72rem; letter-spacing: .04em; }
-.tr-fig.upcoming { opacity: .45; }
+.tr-fig.upcoming { opacity: .6; }
+.tr:is([data-phase="rest"], [data-phase="prep"]) .tr-name { opacity: .85; }
 .tr.has-fig .tr-ring { width: min(52vw, 26vh, 230px); }
 .tr.has-fig .tr-time { font-size: clamp(2.2rem, min(12vw, 6.5vh), 3.8rem); }
 .tr.has-fig .tr-name { margin-bottom: 0; }
