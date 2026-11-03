@@ -104,11 +104,29 @@ document.addEventListener('visibilitychange', () => {
   }
   if (todayKey() !== shownDay && route().name !== 'sessione') render();   // after midnight (not on every switch: keeps open forms)
   store.runSync();
+  navigator.serviceWorker?.getRegistration().then((r) => r?.update()).catch(() => {});   // the app kept in memory on iOS also gets new versions
 });
 render();
 store.runSync();
 
 navigator.storage?.persist?.();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  // A new version takes over (skipWaiting + claim): reload once so its files show now, not at the next launch.
+  // Never during a workout; there the new version shows at the next screen change.
+  let pending = false;
+  const reloadIfIdle = () => {
+    if (!pending) return;
+    const { name } = route();
+    if (name === 'sessione' || name === 'timer') return;
+    pending = false;
+    location.reload();
+  };
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      pending = true;
+      reloadIfIdle();
+    });
+    addEventListener('hashchange', reloadIfIdle);
+  }
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
