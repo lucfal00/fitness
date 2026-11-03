@@ -567,10 +567,10 @@ body.timer-on main { padding: 0; max-width: none; }
   color: var(--text); text-decoration: none; background: var(--card); }
 .tr-title { flex: 1; min-width: 0; text-align: center; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tr-end { min-height: 44px; padding: 0 14px; border: 0; border-radius: 22px; background: var(--card); color: var(--danger); font: inherit; font-weight: 600; }
-.tr-main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; min-height: 0; }
+.tr-main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: min(10px, 1.2vh); text-align: center; min-height: 0; }
 .tr-phase { margin: 0; font-size: .82rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ph); }
 .tr-name { margin: 0 0 8px; font-size: clamp(1.7rem, 7.5vw, 2.6rem); line-height: 1.1; font-weight: 800; letter-spacing: -.01em; max-width: 16ch; }
-.tr-ring { position: relative; width: min(74vw, 46vh, 320px); aspect-ratio: 1; }
+.tr-ring { position: relative; width: min(70vw, 40vh, 300px); aspect-ratio: 1; flex: none; }
 .tr-ring svg { width: 100%; height: 100%; display: block; }
 .tr-ring circle { fill: none; stroke-width: 12; }
 .tr-ring-bg { stroke: var(--track); }
@@ -580,19 +580,28 @@ body.timer-on main { padding: 0; max-width: none; }
 .tr.last .tr-time { color: var(--ph); animation: tr-pulse 1s ease-in-out infinite; }
 .tr.paused .tr-time { opacity: .55; }
 @keyframes tr-pulse { 50% { transform: scale(1.06); } }
+.tr-note { margin: -6px 0 0; color: var(--muted); font-weight: 600; }
+.tr-note:empty { display: none; }
+.tr-fig { position: relative; display: flex; flex-direction: column; align-items: center; max-width: 100%; margin: 2px 0; transition: opacity .3s ease; }
+.tr-fig svg { display: block; height: min(19vh, 170px); width: auto; max-width: min(86vw, 420px); }
+.tr-fig small { margin-top: 2px; color: var(--muted); font-size: .72rem; letter-spacing: .04em; }
+.tr-fig.upcoming { opacity: .45; }
+.tr.has-fig .tr-ring { width: min(52vw, 26vh, 230px); }
+.tr.has-fig .tr-time { font-size: clamp(2.2rem, min(12vw, 6.5vh), 3.8rem); }
+.tr.has-fig .tr-name { margin-bottom: 0; }
 .tr-hint { margin: 4px 0 0; max-width: 30ch; color: var(--muted); font-size: .9rem; }
-.tr-next { display: flex; align-items: baseline; gap: 10px; margin-top: 10px; padding: 12px 18px; border-radius: 16px; background: var(--card);
+.tr-next { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; padding: 10px 16px; border-radius: 16px; background: var(--card);
   min-width: min(100%, 300px); justify-content: center; }
 .tr-next small { color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-size: .72rem; font-weight: 700; }
 .tr-next b { font-weight: 700; }
 .tr-next span { color: var(--muted); font-variant-numeric: tabular-nums; }
-.tr-foot { display: grid; gap: 12px; }
-.tr-ctrl { display: flex; align-items: center; justify-content: center; gap: 28px; }
-.tr-btn { display: grid; place-items: center; width: 60px; height: 60px; border: 0; border-radius: 50%; background: var(--card); color: var(--text); }
-.tr-btn svg { width: 26px; height: 26px; fill: currentColor; }
-.tr-play { width: 84px; height: 84px; background: var(--ph); color: #fff; box-shadow: 0 8px 24px var(--ph-soft); transition: background .5s ease; }
-.tr-play svg { width: 36px; height: 36px; }
-.tr-btn:active { transform: scale(.94); }
+.tr-foot { display: grid; gap: 10px; }
+.tr-ctrl { display: flex; justify-content: center; }
+.tr-play { display: grid; place-items: center; width: 56px; height: 56px; border: 1.5px solid var(--ph); border-radius: 50%;
+  background: transparent; color: var(--ph); transition: color .5s ease, border-color .5s ease; }
+.tr-play svg { width: 22px; height: 22px; fill: currentColor; }
+.tr-play:active { transform: scale(.94); }
+.tr.paused .tr-play { background: var(--ph); color: #fff; }
 .tr-bar { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
 .tr-bar i { display: block; height: 100%; background: var(--ph); border-radius: 3px; transition: width .2s linear; }
 .tr-total { margin: 0; text-align: center; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }

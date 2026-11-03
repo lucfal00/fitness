@@ -1,5 +1,5 @@
 // "A tempo" (#timer/<sessionId>): full-screen player of a timed day. Countdown ring, phase colours, next step,
-// beeps in the last 3 seconds and at every change, pause / back / skip. Time comes from timestamps, so it stays right
+// beeps in the last 3 seconds and at every change, pause. Time comes from timestamps, so it stays right
 // after the app was in the background (steps that ended meanwhile are counted as done).
 import { getDoc, updateSession, finishSession, discardSession, isReadOnly } from '../store.js';
 import { workoutLabel } from '../logic.js';
@@ -7,6 +7,7 @@ import { resolveExercise } from '../library.js';
 import { timerSteps, totalSec, advance, clock, PART_LABELS } from '../interval.js';
 import { keepAwake, tone, unlockAudio } from '../timer.js';
 import { esc } from '../ui.js';
+import { figureOf, mountFigure } from '../figures.js';
 
 const PREP = 5;                       // "Preparati" seconds before the first step
 const R = 108;                        // ring radius
@@ -114,26 +115,6 @@ function pause() {
   paint();
 }
 
-/** Jump to step k (back / skip): the new step starts in full; a skipped work step is not done. */
-function jump(k) {
-  st.idx = Math.max(0, Math.min(k, st.steps.length - 1));
-  st.startedAt = Date.now();
-  st.leftMs = st.steps[st.idx].sec * 1000;
-  st.beeped = 0;
-  saveIdx();
-  if (!st.paused) tone(990, 0.3, 0.25);
-  paint();
-}
-
-/** Previous step: back to the start of this one if it has been running for more than 2 s, else the previous work step. */
-function back() {
-  const ran = st.steps[st.idx].sec * 1000 - leftMsNow();
-  if (ran > 2000) { jump(st.idx); return; }
-  let k = st.idx - 1;
-  while (k > 0 && st.steps[k].type === 'rest') k--;
-  jump(k);
-}
-
 // ---- Painting ------------------------------------------------------------------------
 
 const exName = (doc, s, i) => resolveExercise(doc, s.items[i]?.ex)?.name ?? 'Esercizio';
@@ -150,6 +131,25 @@ function phase(x, rounds) {
   if (x.type === 'rest') return { key: 'rest', text: x.part === 'main' ? `Pausa · Giro ${x.round + 1}/${rounds}` : 'Pausa' };
   if (x.part === 'main') return { key: 'work', text: `${PART_LABELS.main} · Giro ${x.round + 1}/${rounds}` };
   return { key: x.part, text: PART_LABELS[x.part] };
+}
+
+/** Figure of the current work step, or of the next one during a pause (shown dimmed). */
+function paintFigure(doc, s, box) {
+  const x = st.steps[st.idx];
+  let k = st.idx;
+  while (k < st.steps.length && st.steps[k].type !== 'work') k++;
+  const w = st.steps[k];
+  const ex = w ? s.items[w.i]?.ex : null;
+  const fig = ex ? figureOf(doc, ex) : null;
+  const holder = box.querySelector('.tr-fig');
+  const key = fig ? `${ex}` : '';
+  if (holder.dataset.key !== key) {
+    holder.dataset.key = key;
+    mountFigure(holder, fig);
+  }
+  holder.hidden = !fig;
+  holder.classList.toggle('upcoming', x.type !== 'work');
+  box.classList.toggle('has-fig', !!fig);
 }
 
 function paint() {
@@ -179,6 +179,8 @@ function paint() {
   box.classList.toggle('last', !st.paused && left <= 3);
   box.querySelector('.tr-phase').textContent = ph.text;
   box.querySelector('.tr-name').textContent = label(doc, s, x);
+  box.querySelector('.tr-note').textContent = x.type === 'work' ? s.items[x.i]?.note ?? '' : '';
+  paintFigure(doc, s, box);
   box.querySelector('.tr-time').textContent = clock(left);
   box.querySelector('.tr-ring-fg').style.strokeDashoffset = String(C * (1 - ms / (x.sec * 1000)));
   const nx = st.steps[st.idx + 1];
@@ -240,6 +242,8 @@ export function render(el, { doc, param }) {
     <div class="tr-main">
       <p class="tr-phase"></p>
       <h1 class="tr-name"></h1>
+      <p class="tr-note"></p>
+      <div class="tr-fig" hidden></div>
       <div class="tr-ring">
         <svg viewBox="0 0 240 240" aria-hidden="true"><circle class="tr-ring-bg" cx="120" cy="120" r="${R}"/>
           <circle class="tr-ring-fg" cx="120" cy="120" r="${R}" stroke-dasharray="${C}" transform="rotate(-90 120 120)"/></svg>
@@ -249,11 +253,7 @@ export function render(el, { doc, param }) {
       <div class="tr-next"></div>
     </div>
     <footer class="tr-foot">
-      <div class="tr-ctrl">
-        <button type="button" class="tr-btn" data-act="back" aria-label="Indietro"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM20 5.5v13L9 12z"/></svg></button>
-        <button type="button" class="tr-btn tr-play" data-act="toggle"></button>
-        <button type="button" class="tr-btn" data-act="skip" aria-label="Salta"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5.5v13L15 12z"/></svg></button>
-      </div>
+      <div class="tr-ctrl"><button type="button" class="tr-play" data-act="toggle"></button></div>
       <div class="tr-bar"><i></i></div>
       <p class="tr-total"></p>
     </footer>
@@ -268,9 +268,6 @@ export function render(el, { doc, param }) {
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'toggle') (st.paused ? play : pause)();
-    else if (act === 'skip') {
-      if (st.idx >= st.steps.length - 1) { st.finished = true; paint(); } else jump(st.idx + 1);
-    } else if (act === 'back') back();
     else if (act === 'end') end();
     else if (act === 'save') save();
   };
