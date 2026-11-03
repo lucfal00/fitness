@@ -13,6 +13,7 @@ import * as progress from './views/progress.js';
 import * as exerciseDetail from './views/exercise-detail.js';
 import * as body from './views/body.js';
 import * as settings from './views/settings.js';
+import * as profile from './views/profile.js';
 
 // #scheda/<id|nuova> is the scheda editor, #scheda/<id>/giorno/<tplId|nuovo> the day editor.
 const scheda = {
@@ -24,10 +25,10 @@ const scheda = {
 };
 const views = {
   oggi: today, sessione: session, timer: timerRun, schede: templates, scheda,
-  esercizi: exercises, progressi: progress, esercizio: exerciseDetail, corpo: body, impostazioni: settings,
+  esercizi: exercises, progressi: progress, esercizio: exerciseDetail, corpo: body, impostazioni: settings, profilo: profile,
 };
 const TAB_OF = {                                                    // screens without their own tab
-  sessione: 'oggi', timer: 'oggi', scheda: 'schede', esercizi: 'schede', esercizio: 'progressi', corpo: 'progressi',
+  sessione: 'oggi', timer: 'oggi', scheda: 'schede', esercizi: 'schede', esercizio: 'progressi', corpo: 'progressi', profilo: 'impostazioni',
 };
 const main = document.getElementById('view');
 const banner = document.getElementById('banner');

@@ -2,8 +2,8 @@
 // excluded. Workouts: MET (Compendium of Physical Activities 2024) × the person's own resting kcal/min (basal / 1440) ×
 // minutes; without a profile 1 MET = 3.5 ml/kg/min = 3.5 × kg / 200 kcal/min. The day total adds only what a workout
 // burns above the daily-life rate of those minutes ("in più"), so nothing is counted twice. Pure: no DOM or storage.
-import { bodyWeightAt } from './metrics.js';
-import { timerSteps } from './interval.js';
+import { bodyWeightAt, estimateMinutes } from './metrics.js';
+import { timerSteps, isTimed } from './interval.js';
 import { resolveExercise } from './library.js';
 import { isConcluded } from './logic.js';
 
@@ -95,17 +95,32 @@ export function sessionLoad(doc, s) {
   if (t) {
     const sets = s.items.flatMap((x) => x.sets);
     const frac = sets.length ? sets.filter((x) => x.done).length / sets.length : 0;
-    let metMin = 0;
-    let min = 0;
-    for (const x of timerSteps(t)) {
-      const met = x.type === 'rest' ? TIMED_MET.rest : x.part === 'main' ? TIMED_MET.work : TIMED_MET[x.part] ?? TIMED_MET.work;
-      metMin += (met * x.sec) / 60;
-      min += x.sec / 60;
-    }
+    const { metMin, min } = timedLoad(t);
     return { metMin: metMin * frac, min: min * frac };
   }
   const min = Math.min(MAX_MIN, Math.max(0, (s.end - s.start) / 60000));
   return { metMin: SETS_MET * min, min };
+}
+
+/** MET-minutes and minutes of a whole timed day, step by step. */
+function timedLoad(t) {
+  let metMin = 0;
+  let min = 0;
+  for (const x of timerSteps(t)) {
+    const met = x.type === 'rest' ? TIMED_MET.rest : x.part === 'main' ? TIMED_MET.work : TIMED_MET[x.part] ?? TIMED_MET.work;
+    metMin += (met * x.sec) / 60;
+    min += x.sec / 60;
+  }
+  return { metMin, min };
+}
+
+/** Expected kcal of a day of a scheda done on day d (timed: its steps; sets: its estimated minutes); null without
+ *  weight or minutes. */
+export function templateKcal(doc, t, d) {
+  const r = restRate(doc, d);
+  if (!r) return null;
+  const metMin = isTimed(t) ? timedLoad(t).metMin : SETS_MET * estimateMinutes(doc, t, doc.settings.rest);
+  return metMin > 0 ? metMin * r.perMin : null;
 }
 
 /** kcal of a concluded session: { kcal (burned in it), extra (above the daily-life rate) }; null without weight. */

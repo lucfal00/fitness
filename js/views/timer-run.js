@@ -4,7 +4,7 @@
 // after the app was in the background (steps that ended meanwhile are counted as done); beeps are scheduled on the audio
 // clock for the running step, so they fall exactly on the second.
 import { getDoc, updateSession, finishSession, discardSession, isReadOnly } from '../store.js';
-import { workoutLabel } from '../logic.js';
+import { workoutLabel, schedaOf } from '../logic.js';
 import { resolveExercise } from '../library.js';
 import { timerSteps, totalSec, advance, clock, PART_LABELS } from '../interval.js';
 import { keepAwake, unlockAudio, setAudioSession, scheduleTone, cancelTones } from '../timer.js';
@@ -169,6 +169,7 @@ function forward() {
 
 // ---- Painting ------------------------------------------------------------------------
 
+const schedaName = (doc, s) => schedaOf(doc, s.tpl)?.name ?? workoutLabel(doc, s.tpl);
 const exName = (doc, s, i) => resolveExercise(doc, s.items[i]?.ex)?.name ?? 'Esercizio';
 
 function label(doc, s, x) {
@@ -178,11 +179,38 @@ function label(doc, s, x) {
   return exName(doc, s, x.i);
 }
 
-function phase(x, rounds) {
+function phase(x) {
   if (!x || x.type === 'prep') return { key: 'prep', text: 'Si parte' };
-  if (x.type === 'rest') return { key: 'rest', text: x.part === 'main' ? `Pausa · Giro ${x.round + 1}/${rounds}` : 'Pausa' };
-  if (x.part === 'main') return { key: 'work', text: `${PART_LABELS.main} · Giro ${x.round + 1}/${rounds}` };
-  return { key: x.part, text: PART_LABELS[x.part] };
+  if (x.type === 'rest') return { key: 'rest', text: 'Pausa' };
+  return { key: x.part === 'main' ? 'work' : x.part, text: PART_LABELS[x.part] };
+}
+
+/** Indexes of the work steps of the part (and round, in the circuit) of step k; the start counts as the first part. */
+function groupOf(k) {
+  let j = k;
+  while (j < st.steps.length && st.steps[j].type === 'prep') j++;
+  const x = st.steps[j];
+  if (!x) return [];
+  return st.steps.flatMap((y, n) => (y.type === 'work' && y.part === x.part && y.round === x.round ? [n] : []));
+}
+
+/** One segment per exercise of the group: done ones full, the running one filling up. */
+function paintSegs(box) {
+  const g = groupOf(st.idx);
+  const holder = box.querySelector('.tr-segs');
+  const key = g.join(',');
+  if (holder.dataset.key !== key) {
+    holder.dataset.key = key;
+    holder.innerHTML = g.map(() => '<i><b></b></i>').join('');
+  }
+  const ms = Math.max(0, leftMsNow());
+  const x = st.steps[st.idx];
+  holder.querySelectorAll('b').forEach((b, n) => {
+    const j = g[n];
+    const f = j < st.idx ? 1 : j === st.idx ? 1 - ms / (x.sec * 1000) : 0;
+    b.style.width = `${Math.min(100, Math.max(0, f * 100))}%`;
+  });
+  return g;
 }
 
 /** Figure of the current work step, or of the next one during a pause (shown dimmed). */
@@ -235,8 +263,11 @@ function paint() {
   const x = st.steps[st.idx];
   const ms = Math.max(0, leftMsNow());
   const left = Math.ceil(ms / 1000);
-  const ph = phase(x, rounds);
+  const ph = phase(x);
   box.dataset.phase = ph.key;
+  const g = groupOf(st.idx);
+  const gx = st.steps[g[0]];
+  box.querySelector('.tr-title').textContent = gx?.part === 'main' && rounds > 1 ? `Giro ${gx.round + 1} di ${rounds}` : schedaName(doc, s);
   box.classList.toggle('paused', st.paused);
   box.classList.toggle('last', !st.paused && left <= WARN && x.type === 'work' && x.part === 'main');
   box.querySelector('.tr-phase').textContent = ph.text;
@@ -261,7 +292,10 @@ function paint() {
     : '<small>Poi</small><b>Fine</b>';
   const done = st.steps.slice(0, st.idx).reduce((a, k) => a + k.sec, 0) + (x.sec - ms / 1000);
   const all = totalSec(st.steps);
-  box.querySelector('.tr-total').textContent = `Rimangono ${clock(all - done)}`;
+  paintSegs(box);
+  const pos = g.filter((j) => (x.type === 'work' ? j <= st.idx : j < st.idx)).length;   // in a pause: the one coming
+  box.querySelector('.tr-count').textContent = g.length ? `Esercizio ${Math.max(1, Math.min(g.length, x.type === 'work' ? pos : pos + 1))} di ${g.length}` : '';
+  box.querySelector('.tr-left').textContent = `${clock(all - done)} rimanenti`;
   const pp = box.querySelector('[data-act=toggle]');
   pp.innerHTML = st.paused ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>'
     : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>';
@@ -269,7 +303,7 @@ function paint() {
   box.querySelector('.tr-hint').hidden = st.started;
 }
 
-/** Ring and progress bar, every frame: smooth also on short steps (the 200 ms tick only updates the text). */
+/** Ring and segments, every frame: smooth also on short steps (the 200 ms tick only updates the text). */
 function smooth() {
   raf = 0;
   if (!root || !st || st.finished || !root.isConnected) return;
@@ -278,8 +312,7 @@ function smooth() {
   if (box && x) {
     const ms = Math.max(0, leftMsNow());
     box.querySelector('.tr-ring-fg').style.strokeDashoffset = String(C * (1 - ms / (x.sec * 1000)));
-    const done = st.steps.slice(0, st.idx).reduce((a, k) => a + k.sec, 0) + (x.sec - ms / 1000);
-    box.querySelector('.tr-bar i').style.width = `${Math.min(100, (done / totalSec(st.steps)) * 100)}%`;
+    paintSegs(box);
   }
   raf = requestAnimationFrame(smooth);
 }
@@ -318,12 +351,12 @@ export function render(el, { doc, param }) {
   if (!st || st.sid !== s.id) init(s);
   root = el;
   document.body.classList.add('timer-on');
-  const title = workoutLabel(doc, s.tpl);
+  const title = schedaName(doc, s);
   el.innerHTML = `<div class="tr" data-phase="prep">
     <header class="tr-top">
       <a class="tr-icon" href="#oggi" aria-label="Esci (il timer continua)">‹</a>
       <span class="tr-title">${esc(title)}</span>
-      <button type="button" class="tr-end" data-act="end">Termina</button>
+      <button type="button" class="tr-end" data-act="end" aria-label="Termina l’allenamento">Fine</button>
     </header>
     <div class="tr-main">
       <p class="tr-phase"></p>
@@ -335,7 +368,7 @@ export function render(el, { doc, param }) {
           <circle class="tr-ring-fg" cx="120" cy="120" r="${R}" stroke-dasharray="${C}" transform="rotate(-90 120 120)"/></svg>
         <div class="tr-time" role="timer" aria-live="off"></div>
       </div>
-      <p class="tr-hint">Tocca ▶ per iniziare. Alza il volume: senti un bip negli ultimi 3 secondi e a ogni cambio.</p>
+      <p class="tr-hint">Tocca ▶ per iniziare · un bip negli ultimi 3 secondi e a ogni cambio</p>
       <div class="tr-next"></div>
     </div>
     <footer class="tr-foot">
@@ -344,8 +377,8 @@ export function render(el, { doc, param }) {
         <button type="button" class="tr-play" data-act="toggle"></button>
         <button type="button" class="tr-skip" data-act="skip" aria-label="Esercizio successivo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6v12M6 6.5 14.5 12 6 17.5z"/></svg></button>
       </div>
-      <div class="tr-bar"><i></i></div>
-      <p class="tr-total"></p>
+      <div class="tr-segs" aria-hidden="true"></div>
+      <p class="tr-total"><span class="tr-count"></span><span class="tr-left"></span></p>
     </footer>
   </div>`;
   if (!st.steps.length) {

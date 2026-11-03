@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyDoc } from '../js/logic.js';
-import { bmr, activityMet, restRate, sessionKcal, dayKcal, weightFor, TIMED_MET } from '../js/calories.js';
+import { bmr, activityMet, restRate, sessionKcal, dayKcal, weightFor, templateKcal, TIMED_MET, SETS_MET } from '../js/calories.js';
+import { estimateMinutes } from '../js/metrics.js';
 
 const near = (a, b, tol = 0.5) => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b}`);
 const H = 3600e3;
@@ -104,4 +105,19 @@ test('dayKcal: basal + daily life + extra; null without a complete profile', () 
 test('fmtKcal: whole kcal, a dot every three digits', async () => {
   const { fmtKcal } = await import('../js/ui.js');
   assert.deepEqual([0, 238.4, 999.6, 2243, 12345.4].map(fmtKcal), ['0', '238', '1.000', '2.243', '12.345']);
+});
+
+test('templateKcal: whole timed day by step; sets day by its estimated minutes; null without weight', () => {
+  const d = docWith();
+  const pm = 1694.5 / 1440;
+  const timed = { id: 't', mode: 'timer', rounds: 2, roundRest: 60, items: [
+    { ex: 'a', part: 'main', rest: 20, sets: [{ sec: 40 }, { sec: 40 }] },
+    { ex: 'b', part: 'main', rest: 20, sets: [{ sec: 40 }, { sec: 40 }] }] };
+  // round 1: 40 + 20 + 40 + 60 (round rest); round 2: 40 + 20 + 40
+  const metMin = (TIMED_MET.work * 160 + TIMED_MET.rest * 100) / 60;
+  near(templateKcal(d, timed, '2026-11-03'), metMin * pm, 1e-6);
+  const sets = { id: 'n', items: [{ ex: 'lib_panca_piana', rest: 90, sets: [{ reps: 8 }, { reps: 8 }, { reps: 8 }] }] };
+  assert.equal(estimateMinutes(d, sets, d.settings.rest), 5);
+  near(templateKcal(d, sets, '2026-11-03'), SETS_MET * estimateMinutes(d, sets, d.settings.rest) * pm, 1e-6);
+  assert.equal(templateKcal(emptyDoc(), timed, '2026-11-03'), null);
 });

@@ -13,13 +13,14 @@ import {
 let period = 'settimana';
 let anchor = null;                        // any day of the shown period; null = today
 let mapWeek = null;                       // Monday of the body-map week; null = current week
-const ACCENT = COLORS[0];
 const MAX_CARDIO = 5;
 const REST_KEY = '#altro';                 // reserved segment key: exercise ids never contain '#'
 const MAX_RECORDS = 12;
 
 const empty = (text) => `<p class="muted">${text}</p>`;
-const bars = (points, unit, aria) => barChart(points, null, ACCENT, unit, aria);
+/** Accent of the current theme (the light green on dark): charts follow the app colour. */
+const accent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || COLORS[0];
+const bars = (points, unit, aria) => barChart(points, null, accent(), unit, aria);
 
 /** Today's estimate (basal + daily life + workouts), then the period: kcal above daily life per bucket, the daily
  *  average and what the workouts burned. Without a profile: a link to fill it in. */
@@ -29,11 +30,11 @@ function calories(doc, r, stats, today) {
     const why = restRate(doc, today) ? 'sesso, anno di nascita e altezza' : 'il profilo e il peso in Corpo';
     return `<section class="card st-wide"><h2>Calorie</h2>
       <p class="muted">Per stimare le calorie servono ${why}.</p>
-      <a class="btn" href="#impostazioni/profilo">Completa il profilo</a></section>`;
+      <a class="btn" href="#profilo">Completa il profilo</a></section>`;
   }
-  const parts = [['Basale', k.bmr, 'var(--k-base)'], ['Vita quotidiana', k.life, 'var(--k-life)'], ['Allenamenti', k.extra, 'var(--accent)']];
+  const parts = [['Basale', k.bmr, 'var(--k-base)'], ['Giornata', k.life, 'var(--k-life)'], ['Allenamenti', k.extra, 'var(--accent)']];
   const seg = parts.filter((p) => p[1] > 0).map(([, v, c]) => `<i style="flex:${v.toFixed(1)};background:${c}"></i>`).join('');
-  const rows = parts.map(([l, v, c], i) => `<li><span><i style="background:${c}"></i>${l}</span><b>${i === 2 ? '+' : ''}${fmtKcal(v)}</b></li>`).join('');
+  const rows = parts.map(([l, v, c], i) => `<li><small><i style="background:${c}"></i>${l}</small><b>${i === 2 ? '+' : ''}${fmtKcal(v)}</b></li>`).join('');
   const end = r.to < today ? r.to : today;
   let days = 0;
   let sum = 0;
@@ -50,9 +51,8 @@ function calories(doc, r, stats, today) {
   });
   const done = doc.sessions.filter((s) => isConcluded(s) && s.date >= r.from && s.date <= end);
   const burned = done.reduce((a, s) => a + (sessionKcal(doc, s)?.kcal ?? 0), 0);
-  return `<section class="card st-wide kcal-card"><div class="card-head"><h2>Calorie</h2><a class="btn small" href="#impostazioni/profilo">Profilo</a></div>
+  return `<section class="card st-wide kcal-card"><div class="card-head"><h2>Calorie · oggi</h2><a class="head-link" href="#profilo">Profilo</a></div>
     <div class="kcal-cols"><div>
-      <small class="lbl">Oggi · stima</small>
       <p class="kcal-big"><b>${fmtKcal(k.total)}</b> kcal</p>
       <div class="kcal-seg" aria-hidden="true">${seg}</div>
       <ul class="kcal-parts">${rows}</ul>
@@ -74,12 +74,12 @@ function costanza(doc, r, today) {
   const tip = (k, v) => `${fmtFull(k)} · ${v ? names[k].join(', ') : 'nessun allenamento'}`;
   return `<section class="card st-wide"><h2>Costanza</h2>
     <div class="tiles">
-      <div class="card tile"><b>${n}</b><small>allenamenti<br>nel periodo</small></div>
-      <div class="card tile"><b>${st.current}</b><small>settimane di fila<br>con allenamento</small></div>
-      <div class="card tile"><b>${st.best}</b><small>record<br>(settimane)</small></div>
+      <div class="tile"><b>${n}</b><small>allenamenti<br>nel periodo</small></div>
+      <div class="tile"><b>${st.current}</b><small>settimane<br>di fila</small></div>
+      <div class="tile"><b>${st.best}</b><small>record<br>settimane</small></div>
     </div>
     <p class="chart-sub">Giorni con allenamento negli ultimi 12 mesi</p>
-    ${heatmap((k) => (doneCount(doc, k) ? 1 : 0), ACCENT, today, tip)}
+    ${heatmap((k) => (doneCount(doc, k) ? 1 : 0), accent(), today, tip)}
   </section>`;
 }
 
@@ -129,7 +129,7 @@ function effort(stats) {
     ${dur.some((p) => p.value) ? `<p class="chart-sub">Durata media (minuti)</p>${bars(dur, 'min', 'Durata media degli allenamenti in minuti')}`
     : empty('Nessun allenamento concluso in questo periodo.')}
     ${rpe.some((p) => p.value != null) ? `<p class="chart-sub">RPE medio dell’allenamento</p>
-      ${valueLine(rpe, ACCENT, 'RPE medio per periodo', { unit: 'RPE' })}` : ''}
+      ${valueLine(rpe, accent(), 'RPE medio per periodo', { unit: 'RPE' })}` : ''}
   </section>`;
 }
 
@@ -161,7 +161,7 @@ function cardio(doc, stats) {
     ${stackedBars(series, keys, colors, { ariaLabel: 'Chilometri per periodo e attività', unit: 'km', names })}
     <div class="legend">${legend}</div>
     ${pts.some((p) => p.value != null) ? `<p class="chart-sub">Passo, ${esc(nameOf(main))} (secondi al km: più basso = più veloce)</p>
-      ${valueLine(pts, COLORS[0], `Passo di ${nameOf(main)} in secondi al km`, { unit: 's/km' })}` : ''}
+      ${valueLine(pts, accent(), `Passo di ${nameOf(main)} in secondi al km`, { unit: 's/km' })}` : ''}
   </section>`;
 }
 
@@ -187,7 +187,7 @@ export function render(el, { doc, today, refresh }) {
   const any = doc.sessions.some((s) => s.end != null && !s.deleted);
 
   el.innerHTML = `
-    <header class="top"><h1 class="grow">Progressi</h1><a class="btn small" href="#corpo">Corpo</a></header>
+    <header class="top"><h1 class="grow">Progressi</h1><a class="head-link" href="#corpo">Corpo ›</a></header>
     <div class="seg period-seg">${seg}</div>
     <div class="period-nav">
       <button class="icon-btn" data-act="pprev" aria-label="Periodo precedente">‹</button>

@@ -1,11 +1,10 @@
-// "Impostazioni": profile (calories), theme, kg step, rest, sound, sync and backup.
+// "Impostazioni": link to the profile (calories), theme, kg step, rest, sound, sync and backup.
 import {
-  setSetting, setProfile, exportBackup, importBackup, getSync, connectSync, disconnectSync, runSync, isReadOnly,
+  setSetting, exportBackup, importBackup, getSync, connectSync, disconnectSync, runSync, isReadOnly,
 } from '../store.js';
-import { esc, fmtKg, fmtKcal, fmtShort } from '../ui.js';
-import { LIFE, profileOf, bmr } from '../calories.js';
-import { todayKey } from '../logic.js';
-import { bodyWeightAt } from '../metrics.js';
+import { esc, fmtKg, fmtKcal } from '../ui.js';
+import { icon } from '../icons.js';
+import { profileKcal } from './profile.js';
 
 export const APP_VERSION = '1.0.0';
 const TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=gist&description=Fitness%20sync';
@@ -57,33 +56,12 @@ function syncSection() {
   </section>`;
 }
 
-/** Sex, birth year, height and typical day; the weight comes from Corpo. Shows the basal it gives. */
-function profileSection(doc, ro) {
-  const p = profileOf(doc);
-  const today = todayKey();
-  const kg = bodyWeightAt(doc, today);
-  const wDay = kg === undefined ? null : Object.keys(doc.body).filter((k) => k <= today && doc.body[k].kg != null).sort().pop();
-  const b = bmr(p, kg, +today.slice(0, 4));
-  const dis = ro ? 'disabled' : '';
-  const sex = (v, label) => `<label class="pick"><input type="radio" name="sex" value="${v}" ${p.sex === v ? 'checked' : ''} ${dis}><span>${label}</span></label>`;
-  const life = Object.entries(LIFE).map(([k, l]) => `<label class="choice life"><input type="radio" name="life" value="${k}"
-    ${(p.life ?? 'sit') === k ? 'checked' : ''} ${dis}><span class="grow">${l.name}<small>${l.hint}</small></span><small>×${fmtKg(l.f)}</small></label>`).join('');
-  return `<section class="card settings" id="profilo"><h2>Profilo</h2>
-    <p class="muted">Serve solo per stimare le calorie.</p>
-    <div class="form">
-      <div class="seg">${sex('m', 'Uomo')}${sex('f', 'Donna')}</div>
-      <div class="two">
-        <label class="field">Anno di nascita<input name="born" type="text" inputmode="numeric" maxlength="4" value="${esc(p.born ?? '')}" placeholder="es. 1999" autocomplete="off" ${dis}></label>
-        <label class="field">Altezza (cm)<input name="cm" type="text" inputmode="numeric" maxlength="3" value="${esc(p.cm ?? '')}" placeholder="es. 178" autocomplete="off" ${dis}></label>
-      </div>
-      <a class="pw-row prof-kg" href="#corpo"><span>Peso<small> · ${wDay ? `da Corpo, ${esc(fmtShort(wDay))}` : 'segnalo in Corpo'}</small></span>
-        <b>${kg !== undefined ? `${esc(fmtKg(kg))} kg` : '–'}</b></a>
-      <fieldset><legend>Giornata tipo, sport esclusi</legend>${life}</fieldset>
-      ${b != null ? `<div class="kcal-pair"><div><small>Basale</small><b>${fmtKcal(b)}</b><small>kcal/giorno</small></div>
-        <div><small>Senza sport</small><b>${fmtKcal(Math.round(b) + Math.round(b * ((LIFE[p.life] ?? LIFE.sit).f - 1)))}</b><small>kcal/giorno</small></div></div>`
-      : '<p class="muted">Completa i dati e segna il peso in Corpo per vedere il basale.</p>'}
-    </div>
-  </section>`;
+/** Link to the profile, with the basal it gives. */
+function profileRow(doc) {
+  const k = profileKcal(doc);
+  return `<a class="card prof-link" href="#profilo"><span class="grow"><b>Profilo</b>
+    <small class="muted">${k ? `Basale ${fmtKcal(k.bmr)} kcal · senza sport ${fmtKcal(k.day)}` : 'Sesso, età e altezza per stimare le calorie'}</small></span>
+    ${icon('chevron-right', 'ic chev')}</a>`;
 }
 
 function prefsSection(doc, ro) {
@@ -108,11 +86,15 @@ function prefsSection(doc, ro) {
 }
 
 export function render(el, { doc, param, refresh }) {
+  if (param === 'profilo') {                      // old link: the profile has its own page
+    location.replace('#profilo');
+    return;
+  }
   const last = doc.settings.lastBackup;
 
   el.innerHTML = `
     <header class="top"><h1>Impostazioni</h1></header>
-    ${profileSection(doc, isReadOnly())}
+    ${profileRow(doc)}
     ${prefsSection(doc, isReadOnly())}
     ${syncSection()}
     <section class="card settings"><h2>Backup</h2>
@@ -130,7 +112,6 @@ export function render(el, { doc, param, refresh }) {
       <p class="muted">Fitness ${APP_VERSION} · funziona offline · i dati restano sui tuoi dispositivi (e cifrati sul tuo Gist, se colleghi la sincronizzazione).</p>
     </section>`;
 
-  if (param === 'profilo') el.querySelector('#profilo')?.scrollIntoView({ block: 'start' });
   const input = el.querySelector('input[type="file"]');
   const form = el.querySelector('form[data-form="sync"]');
 
@@ -180,18 +161,6 @@ export function render(el, { doc, param, refresh }) {
 
   el.onchange = async (e) => {
     const name = e.target.name || '';
-    if (name === 'sex' || name === 'life') {
-      setProfile({ [name]: e.target.value });
-      return;
-    }
-    if (name === 'born' || name === 'cm') {
-      const v = Number(e.target.value.trim());
-      const ok = name === 'born' ? Number.isInteger(v) && v >= 1900 && v <= +todayKey().slice(0, 4) : Number.isInteger(v) && v >= 80 && v <= 250;
-      if (!e.target.value.trim()) setProfile({ [name]: null });
-      else if (ok) setProfile({ [name]: v });
-      refresh();                                  // basal updated, or the old value restored
-      return;
-    }
     if (name === 'theme') {
       setSetting('theme', e.target.value);
       return;

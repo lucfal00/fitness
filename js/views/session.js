@@ -113,9 +113,9 @@ function summaryHtml(doc, s, ms) {
   const { done, total } = setCounts(s);
   const lines = recordLines(doc, sessionRecords(doc, s));
   return `<div class="tiles sum-tiles">
-      <div class="card tile"><b>${Math.max(0, Math.round(ms / 60000))}</b><small>minuti</small></div>
-      <div class="card tile"><b>${k ? fmtKcal(k.kcal) : '–'}</b><small>kcal</small></div>
-      <div class="card tile"><b>${done}/${total}</b><small>serie fatte</small></div></div>
+      <div class="tile"><b>${Math.max(0, Math.round(ms / 60000))}</b><small>minuti</small></div>
+      <div class="tile"><b>${k ? fmtKcal(k.kcal) : '–'}</b><small>kcal</small></div>
+      <div class="tile"><b>${done}/${total}</b><small>serie fatte</small></div></div>
     ${vol ? `<p class="muted sum-vol">Volume ${esc(fmtNum(vol))} kg</p>` : ''}
     ${!done && total ? '<p class="muted">Nessuna serie segnata come fatta.</p>' : ''}
     ${lines ? `<ul class="rows rec-list">${lines}</ul>` : ''}`;
