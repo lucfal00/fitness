@@ -15,6 +15,10 @@ const back = (o) => ({
   KL: [81, 101, 0], FL: [80, 122, 0], KR: [99, 101, 0], FR: [100, 122, 0], ...o,
 });
 
+// Front view, standing (same joints as the back view, no wall).
+const front = (o) => ({ ...back({}), ...o });
+const hipsHands = { EL: [64, 62, 0], WL: [80, 78, 0], ER: [116, 62, 0], WR: [100, 78, 0] };
+
 const bug = (o) => ({
   H: [90, 18, 0], SL: [78, 32, 0], SR: [102, 32, 0], PL: [83, 70, 0], PR: [97, 70, 0],
   EL: [77, 33, 10], WL: [76, 34, 22], ER: [103, 33, 10], WR: [104, 34, 22],
@@ -22,6 +26,66 @@ const bug = (o) => ({
 });
 
 const FIGURES = {
+  // marching with forward shoulder circles: knees alternate while the arms go front, down, back, up
+  marcia_cerchi_spalle: { view: 'side', ms: 450, cycle: true, k: [
+    [100, 28, 100, 40, 100, 74, 112, 41, 125, 42, 112, 41, 125, 42, 114, 82, 110, 104, 100, 97, 100, 120],
+    [100, 28, 100, 40, 100, 74, 100, 53, 100, 66, 100, 53, 100, 66, 101, 97, 100, 120, 99, 97, 100, 120],
+    [100, 28, 100, 40, 100, 74, 88, 41, 75, 42, 88, 41, 75, 42, 100, 97, 100, 120, 114, 82, 110, 104],
+    [100, 28, 100, 40, 100, 74, 100, 28, 100, 15, 100, 28, 100, 15, 101, 97, 100, 120, 99, 97, 100, 120]] },
+  // chest stretch at the wall behind (as in the photo): lunge stance, back arm on the wall, chest turns forward
+  pettorale_muro: { view: 'side', wall: 48, ms: 1600, k: [
+    [106, 30, 102, 42, 98, 76, 76, 41, 52, 40, 110, 58, 106, 47, 120, 97, 128, 120, 84, 99, 70, 120],
+    [113, 32, 109, 44, 102, 79, 78, 42, 52, 40, 116, 60, 112, 49, 124, 98, 128, 120, 86, 101, 70, 120]] },
+  // standing forward fold: hinge at the hips, hands slide down towards the ankles
+  piegamento_avanti: { view: 'side', hold: true, ms: 2500, k: [
+    [100, 28, 100, 40, 100, 74, 101, 57, 102, 73, 99, 57, 98, 73, 100, 97, 100, 120, 100, 97, 100, 120],
+    [111, 104, 112, 92, 96, 74, 110, 104, 106, 116, 109, 104, 104, 116, 99, 97, 100, 120, 99, 97, 100, 120]] },
+  // hip circles, seen from the front, hands on the hips
+  cerchi_anche: { view: 'front', ms: 500, cycle: true, k: [
+    front({ ...hipsHands, PL: [88, 80, 0], PR: [104, 80, 0], WL: [86, 78, 0], WR: [106, 78, 0], KL: [84, 101, 0], KR: [102, 101, 0] }),
+    front({ ...hipsHands, PL: [82, 77, 0], PR: [98, 77, 0], KL: [81, 100, 0], KR: [99, 100, 0] }),
+    front({ ...hipsHands, PL: [76, 80, 0], PR: [92, 80, 0], WL: [74, 78, 0], WR: [94, 78, 0], KL: [78, 101, 0], KR: [96, 101, 0] }),
+    front({ ...hipsHands, PL: [82, 83, 0], PR: [98, 83, 0], KL: [81, 102, 0], KR: [99, 102, 0] })] },
+  // standing quad stretch: heel to the glute, the near hand holds the foot, the far arm forward for balance
+  quadricipite_in_piedi: { view: 'side', ms: 1600, k: [
+    [100, 28, 100, 40, 100, 74, 95, 58, 90, 76, 112, 47, 124, 45, 99, 98, 88, 82, 100, 97, 100, 120],
+    [100, 28, 100, 40, 100, 74, 96, 58, 93, 73, 112, 47, 124, 45, 99, 98, 92, 76, 100, 97, 100, 120]] },
+  // calf raises: the whole body rises on the toes
+  calf_corpo_libero: { view: 'side', ms: 900, k: [
+    [100, 28, 100, 40, 100, 74, 101, 57, 102, 73, 99, 57, 98, 73, 101, 97, 101, 120, 99, 97, 99, 120],
+    [100, 20, 100, 32, 100, 66, 101, 49, 102, 65, 99, 49, 98, 65, 102, 89, 103, 114, 100, 89, 101, 114]] },
+  // straight-arm circles, seen from the front: small circles with the arms out to the sides
+  cerchi_braccia: { view: 'front', ms: 380, cycle: true, k: [
+    front({ EL: [55, 40, 0], WL: [36, 37, 0], ER: [125, 40, 0], WR: [144, 37, 0] }),
+    front({ EL: [53, 42, 0], WL: [31, 42, 0], ER: [127, 42, 0], WR: [149, 42, 0] }),
+    front({ EL: [55, 44, 0], WL: [36, 47, 0], ER: [125, 44, 0], WR: [144, 47, 0] }),
+    front({ EL: [56, 42, 0], WL: [41, 42, 0], ER: [124, 42, 0], WR: [139, 42, 0] })] },
+  // reverse lunges, alternating: step back with one leg, back up, then the other
+  affondi_corpo_libero: { view: 'side', ms: 900, cycle: true, k: [
+    [100, 28, 100, 40, 100, 74, 92, 58, 97, 73, 108, 58, 103, 73, 101, 97, 100, 120, 99, 97, 100, 120],
+    [94, 46, 94, 58, 92, 92, 86, 76, 91, 91, 102, 76, 97, 91, 80, 114, 64, 118, 116, 97, 104, 120],
+    [100, 28, 100, 40, 100, 74, 92, 58, 97, 73, 108, 58, 103, 73, 101, 97, 100, 120, 99, 97, 100, 120],
+    [94, 46, 94, 58, 92, 92, 86, 76, 91, 91, 102, 76, 97, 91, 116, 97, 104, 120, 80, 114, 64, 118]] },
+  // breathing standing: arms rise to the sides and overhead on the inhale, come down on the exhale (front view)
+  respiro_in_piedi: { view: 'front', ms: 1500, cycle: true, k: [
+    front({ EL: [70, 61, 0], WL: [68, 79, 0], ER: [110, 61, 0], WR: [112, 79, 0] }),
+    front({ EL: [55, 40, 0], WL: [36, 38, 0], ER: [125, 40, 0], WR: [144, 38, 0] }),
+    front({ EL: [68, 22, 0], WL: [80, 6, 0], ER: [112, 22, 0], WR: [100, 6, 0] }),
+    front({ EL: [55, 40, 0], WL: [36, 38, 0], ER: [125, 40, 0], WR: [144, 38, 0] })] },
+  // low lunge, back knee on the floor, arms overhead: the hips sink forward
+  affondo_basso: { view: 'side', ms: 1700, k: [
+    [101, 54, 100, 66, 98, 100, 112, 52, 118, 36, 110, 52, 115, 36, 126, 96, 130, 120, 74, 118, 52, 120],
+    [106, 56, 105, 68, 104, 104, 116, 53, 120, 37, 114, 53, 117, 37, 130, 96, 130, 120, 76, 118, 52, 120]] },
+  // supine twist seen from above: arms in a T, bent knees fall to one side (mirrored for the right side)
+  torsione_sdraiato: { view: 'top', sided: true, ms: 1800, k: [
+    top({ H: [90, 20, 0], SL: [76, 34, 0], SR: [104, 34, 0], EL: [58, 34, 0], WL: [40, 34, 0], ER: [122, 34, 0], WR: [140, 34, 0],
+      PL: [83, 74, 0], PR: [97, 74, 0], KL: [84, 92, 18], FL: [84, 108, 0], KR: [96, 92, 18], FR: [96, 108, 0] }),
+    top({ H: [90, 20, 0], SL: [76, 34, 0], SR: [104, 34, 0], EL: [58, 34, 0], WL: [40, 34, 0], ER: [122, 34, 0], WR: [140, 34, 0],
+      PL: [82, 74, 0], PR: [96, 75, 4], KL: [56, 80, 2], FL: [58, 100, 0], KR: [62, 90, 8], FR: [64, 108, 0] })] },
+  // breathing lying on the back, knees bent, hands on the belly that rises
+  respiro_sdraiato: { view: 'side', ms: 2200, k: [
+    [28, 112, 40, 114, 80, 116, 55, 109, 66, 111, 55, 109, 66, 111, 102, 92, 112, 119, 102, 92, 112, 119],
+    [28, 112, 40, 113, 80, 116, 55, 106, 66, 106, 55, 106, 66, 106, 102, 92, 112, 119, 102, 92, 112, 119]] },
   marcia_sul_posto: { view: 'side', ms: 700, k: [
     [100, 28, 100, 40, 100, 74, 94, 56, 90, 70, 106, 56, 112, 66, 114, 82, 110, 104, 100, 97, 100, 120],
     [100, 28, 100, 40, 100, 74, 106, 56, 112, 66, 94, 56, 90, 70, 100, 97, 100, 120, 114, 82, 110, 104]] },
@@ -40,7 +104,7 @@ const FIGURES = {
     [100, 28, 100, 40, 100, 74, 92, 58, 97, 73, 108, 58, 103, 73, 118, 92, 134, 108, 100, 97, 100, 120],
     [103, 28, 102, 40, 100, 74, 94, 58, 98, 73, 110, 58, 104, 73, 88, 95, 72, 112, 100, 97, 100, 120]] },
   // seen from above, standing: shoulders and arms turn, hips stay still
-  torsioni_busto: { view: 'top', ms: 900, alt: { view: 'side', k: [
+  torsioni_busto: { view: 'top', mat: false, ms: 900, alt: { view: 'side', k: [
     [100, 28, 100, 40, 100, 74, 111, 41, 122, 42, 89, 41, 78, 42, 101, 97, 100, 120, 99, 97, 100, 120],
     [100, 28, 100, 40, 100, 74, 89, 41, 78, 42, 111, 41, 122, 42, 101, 97, 100, 120, 99, 97, 100, 120]] }, k: [
     top({ H: [90, 65, 0], SL: [76.1, 57, 0], SR: [103.9, 73, 0], EL: [63.6, 49.8, 0], WL: [51.1, 42.6, 0], ER: [116.4, 80.2, 0], WR: [128.9, 87.4, 0], PL: [81, 65, 0], PR: [99, 65, 0], KL: [81, 66, 0], FL: [81, 67, 0], KR: [99, 66, 0], FR: [99, 67, 0] }),
@@ -84,7 +148,7 @@ const FIGURES = {
 };
 FIGURES.ponte_glutei_isometrico = { ...FIGURES.ponte_glutei, k: [FIGURES.ponte_glutei.k[1], FIGURES.ponte_glutei.k[1]] };
 
-const VIEW_LABELS = { top: 'dall’alto', back: 'da dietro' };
+const VIEW_LABELS = { top: 'dall’alto', back: 'da dietro', front: 'di fronte' };
 const norm = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]+/g, ' ').trim();
 const ALIASES = { 'plank sugli avambracci': 'plank', 'ponte glutei': 'ponte_glutei', 'split squat': 'split_squat',
   'y prona': 'y_prona', 'w prona': 'w_prona', 'wall slide': 'wall_slide', 'scivolamento al muro': 'wall_slide' };
@@ -97,8 +161,13 @@ export function figureOf(doc, exId, note = '') {
   const name = norm(resolveExercise(doc, exId)?.name);
   const s = slug && FIGURES[slug] ? slug : BY_NAME.get(name) ?? ALIASES[name];
   const fig = (s && FIGURES[s]) || null;
-  if (!fig?.cycle || !/indietro|antiorario/i.test(note)) return fig;
-  return { ...fig, k: [...fig.k].reverse(), ...(fig.alt ? { alt: { ...fig.alt, k: [...fig.alt.k].reverse() } } : {}) };
+  let out = fig;
+  if (fig?.sided && /destr/i.test(note)) {
+    const flip = (k) => Object.fromEntries(Object.entries(k).map(([j, [x, y, z]]) => [j, [180 - x, y, z]]));
+    out = { ...fig, k: fig.k.map(flip) };
+  }
+  if (!out?.cycle || !/indietro|antiorario/i.test(note)) return out;
+  return { ...out, k: [...out.k].reverse(), ...(out.alt ? { alt: { ...out.alt, k: [...out.alt.k].reverse() } } : {}) };
 }
 
 const el = (p, t, a) => {
@@ -121,13 +190,19 @@ function bounds(fig) {
     else for (const [x, y, z] of Object.values(k)) pts.push([x, y], [x + z * 0.45, y + z * 0.63]);
   }
   if (fig.view === 'side') pts.push([pts[0][0], 121]);
+  if (fig.wall != null) pts.push([fig.wall - 2, 121]);
   if (fig.view === 'back') pts.push([20, 4], [160, 122]);
   const xs = pts.map((p) => p[0]);
   const ys = pts.map((p) => p[1]);
   const pad = 10;
-  const x0 = Math.min(...xs) - pad;
-  const y0 = Math.min(...ys) - pad;
-  return [x0, y0, Math.max(...xs) + pad - x0, Math.max(...ys) + pad - y0];
+  const MIN = 96;                       // lying figures keep the scale of standing ones (no giant heads)
+  let x0 = Math.min(...xs) - pad;
+  let w = Math.max(...xs) + pad - x0;
+  let y1 = Math.max(...ys) + pad;
+  let h = y1 - (Math.min(...ys) - pad);
+  if (h < MIN) h = MIN;                 // grow upwards: the floor stays at the bottom
+  if (w < MIN) { x0 -= (MIN - w) / 2; w = MIN; }
+  return [x0, y1 - h, w, h];
 }
 
 /** One view inside `box`: its svg and a paint(P) function. */
@@ -137,6 +212,7 @@ function buildView(box, fig) {
   const L = (c, w = 4) => el(svg, 'line', { stroke: c, 'stroke-width': w, 'stroke-linecap': 'round' });
   if (fig.view === 'side') {
     el(svg, 'line', { x1: bx, y1: 121, x2: bx + bw, y2: 121, stroke: 'var(--line)', 'stroke-width': 1.5 });
+    if (fig.wall != null) el(svg, 'line', { x1: fig.wall, y1: by, x2: fig.wall, y2: 121, stroke: 'var(--muted)', 'stroke-width': 3 });
     const o = { eb: L(FAR), wb: L(FAR), kb: L(FAR), fb: L(FAR), t: L(INK), hn: L(INK), ka: L(INK), fa: L(INK), ea: L(INK), wa: L(INK) };
     const head = el(svg, 'circle', { r: 7.5, fill: 'var(--card)', stroke: INK, 'stroke-width': 3.5 });
     return { svg, paint: (P) => {
@@ -148,6 +224,10 @@ function buildView(box, fig) {
     } };
   }
   if (fig.view === 'back') el(svg, 'rect', { x: 20, y: 4, width: 140, height: 118, rx: 4, fill: 'none', stroke: 'var(--line)', 'stroke-width': 2 });
+  if (fig.view === 'top' && fig.mat !== false) {   // a mat: the body lies on the floor, seen from above
+    el(svg, 'rect', { x: bx + 4, y: by + 2, width: bw - 8, height: bh - 4, rx: 6, fill: 'none', stroke: 'var(--line)',
+      'stroke-width': 1.5, 'stroke-dasharray': '5 4' });
+  }
   const segs = [['SR', 'ER', FAR], ['ER', 'WR', FAR], ['PR', 'KR', FAR], ['KR', 'FR', FAR],
     ['SL', 'EL', INK], ['EL', 'WL', INK], ['PL', 'KL', INK], ['KL', 'FL', INK]];
   const shadows = segs.map(() => L('var(--line)', 4));
@@ -190,9 +270,13 @@ export function mountFigure(box, fig) {
     return out;
   });
   const seq = fig.cycle ? fig.k.map((_, n) => n) : [0, 1];
+  let t0 = null;
   const frame = (t) => {
     if (!views[0].svg.isConnected) return;
-    const ph = t / fig.ms;              // always animated (also with "Reduce motion"): the movement is the explanation
+    t0 ??= t;
+    // "hold" figures go into the position once and stay there (static stretches); the others loop. Always animated
+    // (also with "Reduce motion"): the movement is the explanation.
+    const ph = fig.hold ? Math.min(t - t0, fig.ms) / fig.ms * 0.999 : t / fig.ms;
     const n = Math.floor(ph) % seq.length;
     const f = ph - Math.floor(ph);
     const e = (1 - Math.cos(Math.PI * f)) / 2;
