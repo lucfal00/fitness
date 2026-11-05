@@ -158,6 +158,7 @@ const CARDIO = [
   ['corsa', 'Corsa'],
   ['camminata', 'Camminata'],
   ['marcia_sul_posto', 'Marcia sul posto'],
+  ['jumping_jack', 'Jumping jack'],
   ['bici', 'Bici'],
   ['cyclette', 'Cyclette'],
   ['tapis_roulant', 'Tapis roulant'],
@@ -196,7 +197,7 @@ const ACT_ICON = {
   padel: 'ball-tennis', tennis: 'ball-tennis', basket: 'ball-basketball', pallavolo: 'ball-volleyball', arrampicata: 'mountain',
   yoga: 'yoga', pilates: 'stretching',
 };
-const NOT_ACTIVITIES = new Set(['lib_marcia_sul_posto']);   // warm-up moves, not something one goes out to do
+const NOT_ACTIVITIES = new Set(['lib_marcia_sul_posto', 'lib_jumping_jack']);   // warm-up moves, not something one goes out to do
 
 export const isActivity = (ex) => !!ex && (ex.kind === 'cardio' || ex.kind === 'sport') && !NOT_ACTIVITIES.has(ex.id);
 

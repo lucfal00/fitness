@@ -5,7 +5,7 @@ import {
   getDoc, saveSchedaDay, addSchedaDay, nextDayName, isReadOnly,
 } from '../store.js';
 import { isScheda } from '../logic.js';
-import { isTimed, PARTS, PART_LABELS, timerMinutes } from '../interval.js';
+import { isTimed, PARTS, PART_LABELS, timerMinutes, sideTag } from '../interval.js';
 import { esc, fmtKg, fmtDuration, parseNum } from '../ui.js';
 import {
   openSheet, openExerciseSheet, filterBar, bindFilterBar, filterExercises, exerciseMeta,
@@ -319,7 +319,7 @@ function itemCard(doc, d, it, i) {
 function timedRow(doc, it, i) {
   const ex = resolveExercise(doc, it.ex);
   return `<li class="trow" data-item="${i}">
-    <span class="tname"><b>${esc(ex?.name ?? 'Esercizio rimosso')}</b>${it.note ? `<small>${esc(it.note)}</small>` : ''}</span>
+    <span class="tname"><b>${esc(ex?.name ?? 'Esercizio rimosso')}${sideTag(it.note) ? ` <span class="tr-tag">${esc(sideTag(it.note))}</span>` : ''}</b>${it.note ? `<small>${esc(it.note)}</small>` : ''}</span>
     ${input(`data-i="${i}" data-k="sec" inputmode="numeric" aria-label="Lavoro in secondi, ${esc(ex?.name ?? '')}"`, it.sec)}
     ${input(`data-i="${i}" data-k="rest" inputmode="numeric" aria-label="Pausa dopo in secondi, ${esc(ex?.name ?? '')}"`, it.rest)}
     <button type="button" class="icon-btn small" data-act="more" data-i="${i}" aria-label="Opzioni ${esc(ex?.name ?? 'esercizio')}">⋯</button>

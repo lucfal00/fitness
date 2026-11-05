@@ -3,11 +3,11 @@
 // longer than 30 s, a long beep at every change; pause, back and forward. Time comes from timestamps, so it stays right
 // after the app was in the background (steps that ended meanwhile are counted as done); beeps are scheduled on the audio
 // clock for the running step, so they fall exactly on the second.
-import { getDoc, updateSession, finishSession, discardSession, isReadOnly } from '../store.js';
+import { getDoc, updateSession, finishSession, discardSession, isReadOnly, setSetting } from '../store.js';
 import { workoutLabel, schedaOf } from '../logic.js';
 import { resolveExercise } from '../library.js';
-import { timerSteps, totalSec, advance, clock, PART_LABELS } from '../interval.js';
-import { keepAwake, unlockAudio, setAudioSession, scheduleTone, cancelTones } from '../timer.js';
+import { timerSteps, totalSec, advance, clock, PART_LABELS, sideTag } from '../interval.js';
+import { keepAwake, unlockAudio, setAudioSession, releaseAudio, scheduleTone, cancelTones } from '../timer.js';
 import { esc, fmtKcal } from '../ui.js';
 import { sessionKcal } from '../calories.js';
 import { figureOf, mountFigure } from '../figures.js';
@@ -22,6 +22,7 @@ let st = null;                        // { sid, steps, idx, startedAt, paused, l
 let tick = 0;
 let raf = 0;
 let root = null;
+let away = false;                     // the timer screen was left (its tones cancelled) while the workout went on
 
 if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', () => {
@@ -36,8 +37,12 @@ if (typeof window !== 'undefined') {
 }
 
 function leave() {
+  away = true;
   cancelTones();
-  setAudioSession('auto');
+  if (!st || st.paused || st.finished) {           // a running workout keeps its audio: beeps go on on return
+    setAudioSession('auto');
+    releaseAudio();
+  }
   clearInterval(tick);
   tick = 0;
   cancelAnimationFrame(raf);
@@ -82,9 +87,10 @@ function saveIdx() {
 }
 
 /** Beeps of the running step on the audio clock: halfway (exercises over 30 s), each of the last 3 seconds, and the
- *  long change beep at its end (lower after the last step). Replaces whatever was scheduled. */
-function schedule() {
-  cancelTones();
+ *  long change beep at its end (lower after the last step). Replaces whatever was scheduled, except at a step change:
+ *  the previous step's last beeps may still be due on a lagging audio clock (iPad) and must not be cut. */
+function schedule(replace = true) {
+  if (replace) cancelTones();
   if (!st || st.paused || st.finished) return;
   const x = st.steps[st.idx];
   const left = Math.max(0, leftMsNow()) / 1000;
@@ -105,19 +111,29 @@ function step() {
     markDone(r.done);
     if (!r.done.length) saveIdx();
     if (r.idx - old === 1) navigator.vibrate?.(250);
-    schedule();                                              // the new step's beeps (its change beep already sounded)
+    schedule(false);                                         // the new step's beeps (its change beep is already due)
   }
   if (r.finished) {
     st.finished = true;
     keepAwake(false);
+    endAudio();
     paint();
     return;
   }
   paint();
 }
 
+/** After the last beep the page lets go of the audio, so paused music can be resumed from its app. */
+function endAudio() {
+  setTimeout(() => {
+    if (!st?.finished) return;
+    setAudioSession('auto');
+    releaseAudio();
+  }, 1500);
+}
+
 function play() {
-  setAudioSession(getDoc().settings.loud ? 'playback' : 'transient');
+  setAudioSession(getDoc().settings.loud ? 'playback' : 'ambient');
   unlockAudio();
   if (st.finished) return;
   st.started = true;
@@ -163,6 +179,7 @@ function forward() {
     st.finished = true;
     cancelTones();
     keepAwake(false);
+    endAudio();
     paint();
   } else jump(k);
 }
@@ -171,6 +188,11 @@ function forward() {
 
 const schedaName = (doc, s) => schedaOf(doc, s.tpl)?.name ?? workoutLabel(doc, s.tpl);
 const exName = (doc, s, i) => resolveExercise(doc, s.items[i]?.ex)?.name ?? 'Esercizio';
+/** Exercise name with its side or direction (D / S, O / A, Avanti / Indietro) as a tag. */
+const exHtml = (doc, s, i) => {
+  const tag = sideTag(s.items[i]?.note);
+  return `${esc(exName(doc, s, i))}${tag ? ` <span class="tr-tag">${esc(tag)}</span>` : ''}`;
+};
 
 function label(doc, s, x) {
   if (!x) return '';
@@ -277,10 +299,10 @@ function paint() {
   const w = st.steps[k];
   const note = (it) => it?.note ?? '';
   if (x.type === 'work' || !w) {
-    box.querySelector('.tr-name').textContent = label(doc, s, x);
+    box.querySelector('.tr-name').innerHTML = x.type === 'work' ? exHtml(doc, s, x.i) : esc(label(doc, s, x));
     box.querySelector('.tr-note').textContent = x.type === 'work' ? note(s.items[x.i]) : '';
   } else {
-    box.querySelector('.tr-name').textContent = exName(doc, s, w.i);
+    box.querySelector('.tr-name').innerHTML = exHtml(doc, s, w.i);
     box.querySelector('.tr-note').textContent = ['Prossimo', note(s.items[w.i])].filter(Boolean).join(' · ');
   }
   paintFigure(doc, s, box);
@@ -288,7 +310,7 @@ function paint() {
   const nx = st.steps[st.idx + 1];
   box.querySelector('.tr-next').innerHTML = x.type !== 'work' && nx?.type === 'work'
     ? `<small>Durata</small><b>${esc(clock(nx.sec))}</b>`
-    : nx ? `<small>Poi</small><b>${esc(label(doc, s, nx))}</b><span>${esc(clock(nx.sec))}</span>`
+    : nx ? `<small>Poi</small><b>${nx.type === 'work' ? exHtml(doc, s, nx.i) : esc(label(doc, s, nx))}</b><span>${esc(clock(nx.sec))}</span>`
     : '<small>Poi</small><b>Fine</b>';
   const done = st.steps.slice(0, st.idx).reduce((a, k) => a + k.sec, 0) + (x.sec - ms / 1000);
   const all = totalSec(st.steps);
@@ -301,6 +323,8 @@ function paint() {
     : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>';
   pp.setAttribute('aria-label', st.paused ? (st.started ? 'Riprendi' : 'Inizia') : 'Pausa');
   box.querySelector('.tr-hint').hidden = st.started;
+  box.querySelector('.tr-sound').hidden = st.started;
+  box.querySelector('.tr-next').hidden = !st.started;           // before the start: the sound choice in its place
 }
 
 /** Ring and segments, every frame: smooth also on short steps (the 200 ms tick only updates the text). */
@@ -368,7 +392,11 @@ export function render(el, { doc, param }) {
           <circle class="tr-ring-fg" cx="120" cy="120" r="${R}" stroke-dasharray="${C}" transform="rotate(-90 120 120)"/></svg>
         <div class="tr-time" role="timer" aria-live="off"></div>
       </div>
-      <p class="tr-hint">Tocca ▶ per iniziare · un bip negli ultimi 3 secondi e a ogni cambio</p>
+      <p class="tr-hint">Tocca ▶ per iniziare</p>
+      <div class="tr-sound" role="group" aria-label="Suono">
+        <button type="button" data-act="loud" data-v="0" aria-pressed="${!doc.settings.loud}">Musica sotto</button>
+        <button type="button" data-act="loud" data-v="1" aria-pressed="${!!doc.settings.loud}">Bip anche in silenzioso</button>
+        <small>${doc.settings.loud ? 'La musica di altre app si ferma' : 'Con il silenzioso attivo non senti i bip'}</small></div>
       <div class="tr-next"></div>
     </div>
     <footer class="tr-foot">
@@ -395,6 +423,7 @@ export function render(el, { doc, param }) {
     else if (act === 'skip') forward();
     else if (act === 'end') end();
     else if (act === 'save') save();
+    else if (act === 'loud') setSetting('loud', b.dataset.v === '1');   // the view is drawn again with the choice
     else if (act === 'rpe') {
       const v = +b.dataset.v;
       st.rpe = st.rpe === v ? null : v;
@@ -408,6 +437,8 @@ export function render(el, { doc, param }) {
   clearInterval(tick);
   tick = setInterval(step, 200);
   if (!st.paused) keepAwake(true);
+  if (away && !st.paused && !st.finished) schedule();    // back from another screen: the current step's beeps
+  away = false;
   paint();
   cancelAnimationFrame(raf);
   raf = requestAnimationFrame(smooth);

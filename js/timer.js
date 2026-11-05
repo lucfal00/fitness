@@ -63,12 +63,24 @@ export function skipRest() {
 
 // ---- Sound ------------------------------------------------------------
 
-/** iOS / Safari audio session of the page: 'transient' (beeps over the music, which ducks; muted in silent mode),
- *  'playback' (also in silent mode, but other apps' music pauses), 'auto' (the default). No-op elsewhere. */
+/** iOS / Safari audio session of the page: 'ambient' (beeps mixed with other apps' music; muted in silent mode),
+ *  'playback' (also in silent mode, but other apps' music pauses), 'auto' (the default). No-op elsewhere.
+ *  A context created under another session plays distorted on iPad (the hardware sample rate changes), so it is
+ *  closed here and the next unlockAudio() creates a new one. */
 export function setAudioSession(type) {
   try {
-    if (navigator.audioSession) navigator.audioSession.type = type;
+    if (!navigator.audioSession || navigator.audioSession.type === type) return;
+    navigator.audioSession.type = type;
+    releaseAudio();
   } catch { /* unsupported type: keep the current one */ }
+}
+
+/** Close the AudioContext: the page stops holding the audio session (music of other apps is left alone). */
+export function releaseAudio() {
+  cancelTones();
+  const c = ctx;
+  ctx = null;
+  c?.close().catch(() => {});
 }
 
 /** Create / resume the AudioContext; call from a user gesture (tap on "Inizia"). iOS only lets a context play after
@@ -116,16 +128,26 @@ export function tone(freq = 880, dur = 0.15, vol = 0.25) {
 // Tones scheduled ahead on the audio clock: exact to the millisecond, unlike page timers (which iOS delays).
 const scheduled = new Set();          // { osc, at }
 
-/** Tone at `delaySec` from now on the audio clock; silent when audio is locked or unavailable. */
-export function scheduleTone(delaySec, freq = 880, dur = 0.15, vol = 0.7) {
+/** Audio-clock time being heard right now: the output timestamp moved to this instant, so a tone `d` seconds ahead
+ *  is heard `d` seconds from now even when the clock started late or the output lags (iPad); currentTime otherwise. */
+function heardNow() {
+  const ts = ctx.state === 'running' ? ctx.getOutputTimestamp?.() : null;
+  if (!ts?.performanceTime) return ctx.currentTime;
+  return ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+}
+
+/** Tone at `delaySec` from now on the audio clock; silent when audio is locked or unavailable. A 5 ms attack and an
+ *  exponential release keep it free of clicks. */
+export function scheduleTone(delaySec, freq = 880, dur = 0.15, vol = 0.6) {
   try {
     if (!ctx) return;
     if (ctx.state !== 'running') ctx.resume().catch(() => {});
-    const at = ctx.currentTime + Math.max(0, delaySec);
+    const at = Math.max(ctx.currentTime, heardNow() + Math.max(0, delaySec));
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.frequency.value = freq;
-    gain.gain.setValueAtTime(vol, at);
+    gain.gain.setValueAtTime(0, at);
+    gain.gain.linearRampToValueAtTime(vol, at + 0.005);
     gain.gain.exponentialRampToValueAtTime(0.001, at + dur);
     osc.connect(gain).connect(ctx.destination);
     osc.start(at);
@@ -197,8 +219,7 @@ export function keepAwake(on) {
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
-    requestLock();
-    if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});   // iOS suspends ("interrupted") audio in the background
+    requestLock();                    // audio is resumed only when a beep is due (resuming here would stop the music)
     check();                          // recompute from the end timestamp after backgrounding
   });
 }

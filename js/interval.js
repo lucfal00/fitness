@@ -8,6 +8,20 @@ export const PART_LABELS = { warm: 'Riscaldamento', main: 'Circuito', cool: 'Def
 
 export const isTimed = (t) => t?.mode === 'timer';
 
+/** Side or direction of an exercise from its note, as a short tag: D / S (destra / sinistra), O / A (orario /
+ *  antiorario), Avanti / Indietro ("in avanti", "all'indietro"); '' when the note names none. Only the first part of
+ *  the note counts ("Gamba sinistra · …"), so a hint further on does not tag it. */
+export function sideTag(note) {
+  const n = String(note ?? '').split('·')[0].toLowerCase();
+  if (/antiorari/.test(n)) return 'A';
+  if (/\borari/.test(n)) return 'O';
+  if (/\bdestr/.test(n)) return 'D';
+  if (/\bsinistr/.test(n)) return 'S';
+  if (/\bin avanti\b/.test(n)) return 'Avanti';
+  if (/all.indietro\b/.test(n)) return 'Indietro';
+  return '';
+}
+
 const secOf = (it) => Math.max(0, Math.round(Number(it.sets?.[0]?.sec ?? it.sec) || 0));
 const restOf = (it) => Math.max(0, Math.round(Number(it.rest) || 0));
 

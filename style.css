@@ -652,6 +652,17 @@ body.timer-on main { padding: 0; max-width: none; }
 .tr.paused .tr-time { opacity: .5; }
 @keyframes tr-pulse { 50% { transform: scale(1.04); } }
 .tr-note { margin: -6px 0 0; color: var(--muted); font-size: .92rem; }
+.tr-tag {                                         /* side / direction: D S, O A, Avanti Indietro */
+  display: inline-block; min-width: 1.6em; padding: 0 .4em; border: 1.5px solid var(--ph, var(--accent)); border-radius: 999px;
+  color: var(--ph, var(--accent)); font-size: .62em; font-weight: 600; line-height: 1.5; letter-spacing: .02em; text-align: center;
+  vertical-align: .28em;
+}
+.tname .tr-tag { font-size: .7rem; vertical-align: .1em; }
+.tr-sound { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(100%, 340px); margin-top: 4px; }
+.tr-sound button { min-height: 40px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 999px; background: none;
+  color: var(--muted); font: inherit; font-size: .8rem; }
+.tr-sound button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-strong); }
+.tr-sound small { grid-column: 1 / -1; color: var(--muted); font-size: .75rem; }
 .tr-note:empty { display: none; }
 .tr-fig { display: flex; justify-content: center; align-items: flex-end; gap: 14px; max-width: 100%; margin: 2px 0; transition: opacity .3s ease; }
 .fig-view { display: flex; flex-direction: column; align-items: center; min-width: 0; }

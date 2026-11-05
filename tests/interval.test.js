@@ -35,3 +35,15 @@ test('advance: ticking, skipping several steps in the background, finishing', ()
   assert.equal(clock(65), '1:05');
   assert.equal(clock(-3), '0:00');
 });
+
+test('sideTag: side or direction from the first part of the note', async () => {
+  const { sideTag } = await import('../js/interval.js');
+  const cases = {
+    'Gamba sinistra · tallone al gluteo': 'S', 'Braccio destro · palmo al muro': 'D', 'Sul fianco sinistro · avambraccio': 'S',
+    'Senso orario · mani sui fianchi': 'O', 'Senso antiorario · mani sui fianchi': 'A', 'Ginocchia verso destra, braccia aperte': 'D',
+    'Cerchi delle spalle in avanti': 'Avanti', 'Cerchi delle spalle all’indietro': 'Indietro',
+    'Indietro, alternando le gambe · mani sui fianchi': '', 'Lombare a terra · gamba destra tesa': '', '': '',
+  };
+  for (const [note, tag] of Object.entries(cases)) assert.equal(sideTag(note), tag, note);
+  assert.equal(sideTag(undefined), '');
+});

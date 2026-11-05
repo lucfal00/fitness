@@ -66,6 +66,12 @@ const FIGURES = {
     [94, 46, 94, 58, 92, 92, 86, 76, 91, 91, 102, 76, 97, 91, 80, 114, 64, 118, 116, 97, 104, 120],
     [100, 28, 100, 40, 100, 74, 92, 58, 97, 73, 108, 58, 103, 73, 101, 97, 100, 120, 99, 97, 100, 120],
     [94, 46, 94, 58, 92, 92, 86, 76, 91, 91, 102, 76, 97, 91, 116, 97, 104, 120, 80, 114, 64, 118]] },
+  // jumping jacks, seen from the front: feet together and arms down, then feet apart and arms overhead
+  jumping_jack: { view: 'front', ms: 420, k: [
+    front({ EL: [70, 61, 0], WL: [68, 79, 0], ER: [110, 61, 0], WR: [112, 79, 0], PL: [84, 80, 0], PR: [96, 80, 0],
+      KL: [83, 101, 0], FL: [82, 122, 0], KR: [97, 101, 0], FR: [98, 122, 0] }),
+    front({ H: [90, 22, 0], SL: [74, 38, 0], SR: [106, 38, 0], EL: [63, 23, 0], WL: [57, 6, 0], ER: [117, 23, 0], WR: [123, 6, 0],
+      PL: [82, 76, 0], PR: [98, 76, 0], KL: [72, 97, 0], FL: [63, 118, 0], KR: [108, 97, 0], FR: [117, 118, 0] })] },
   // breathing standing: arms rise to the sides and overhead on the inhale, come down on the exhale (front view)
   respiro_in_piedi: { view: 'front', ms: 1500, cycle: true, k: [
     front({ EL: [70, 61, 0], WL: [68, 79, 0], ER: [110, 61, 0], WR: [112, 79, 0] }),
