@@ -710,6 +710,15 @@ body.timer-on main { padding: 0; max-width: none; }
 .tr-rpe button.on { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 5px; }
 .tr-rpe-ends { display: flex; justify-content: space-between; width: 100%; font-size: .72rem; color: var(--muted); margin-bottom: 26px; }
 @media (prefers-reduced-motion: reduce) { .tr.last .tr-time { animation: none; } .tr-phase, .tr-ring-fg, .tr-play { transition: none; } }
+@media (max-height: 860px) and (min-width: 700px), (max-height: 700px) {  /* iPad in landscape, small phones */
+  .tr-main { gap: 6px; }
+  .tr-name { font-size: clamp(1.5rem, 4.5vh, 2rem); }
+  .fig-view svg { height: min(15vh, 130px); }
+  .tr-fig.two-views .fig-view svg { height: min(14vh, 120px); }
+  .tr.has-fig .tr-ring { width: min(24vh, 200px); }
+  .tr.has-fig .tr-time { font-size: clamp(2rem, 6vh, 3.2rem); }
+  .tr-foot { gap: 6px; }
+}
 /* compact rows of a timed day: name + note | work | pause | menu */
 .tlist { border-left: 2px solid var(--part, var(--accent)); border-radius: 0 var(--radius) var(--radius) 0; padding: 6px 12px 12px; }
 .tlist.part-warm { --part: var(--warm); }

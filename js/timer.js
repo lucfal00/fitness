@@ -129,11 +129,14 @@ export function tone(freq = 880, dur = 0.15, vol = 0.25) {
 const scheduled = new Set();          // { osc, at }
 
 /** Audio-clock time being heard right now: the output timestamp moved to this instant, so a tone `d` seconds ahead
- *  is heard `d` seconds from now even when the clock started late or the output lags (iPad); currentTime otherwise. */
+ *  is heard `d` seconds from now even when the clock started late or the output lags (iPad); currentTime otherwise.
+ *  An estimate more than 0.5 s from currentTime (output latency is far less) means a bad timestamp: currentTime. */
 function heardNow() {
+  const now = ctx.currentTime;
   const ts = ctx.state === 'running' ? ctx.getOutputTimestamp?.() : null;
-  if (!ts?.performanceTime) return ctx.currentTime;
-  return ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+  if (!ts?.performanceTime) return now;
+  const heard = ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+  return Number.isFinite(heard) && Math.abs(heard - now) <= 0.5 ? heard : now;
 }
 
 /** Tone at `delaySec` from now on the audio clock; silent when audio is locked or unavailable. A 5 ms attack and an
