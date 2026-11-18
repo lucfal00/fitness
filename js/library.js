@@ -143,6 +143,8 @@ const BODY = [
   ['torsione_sdraiato', 'Torsione da sdraiato', 'dorso', ['glutei'], 'time'],
   ['respiro_in_piedi', 'Respiro in piedi con le braccia', 'addome', [], 'time'],
   ['respiro_sdraiato', 'Respiro a pancia in su', 'addome', [], 'time'],
+  ['ginocchia_petto', 'Ginocchia al petto da sdraiato', 'dorso', ['glutei'], 'time'],
+  ['gambe_al_muro', 'Gambe al muro', 'femorali', [], 'time'],
   ['marcia_cerchi_spalle', 'Marcia con cerchi delle spalle', 'spalle', ['polpacci'], 'time'],
   ['plank', 'Plank', 'addome', ['spalle'], 'time'],
   ['plank_laterale', 'Plank laterale', 'addome', ['spalle'], 'time'],

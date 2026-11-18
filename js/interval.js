@@ -1,5 +1,5 @@
 // Timed days ("A tempo"): the sequence of steps a timed template plays. Pure: no DOM, no storage.
-// A timed template has mode 'timer', rounds (>= 1), roundRest (s) and items { ex, part: 'warm' | 'main' | 'cool', sec, rest }:
+// A timed template has mode 'timer', rounds (>= 1), roundRest (s), coolRest (s, before the cool-down) and items { ex, part: 'warm' | 'main' | 'cool', sec, rest }:
 // warm-up items play once, then the main items `rounds` times (roundRest between rounds), then the cool-down items once.
 // Each item keeps sets [{ sec }] (one per round for main items) so the generic code (counts, estimates) still works.
 
@@ -28,7 +28,8 @@ const restOf = (it) => Math.max(0, Math.round(Number(it.rest) || 0));
 /**
  * Steps of a timed template, in order:
  * { type: 'work', i (item index), part, round (0-based, main only; 0 otherwise), set (index in the item's sets), sec }
- * { type: 'rest', part, round, sec } — the pause after an item, or between rounds (roundRest replaces the last item's pause).
+ * { type: 'rest', part, round, sec } — the pause after an item, or between rounds (roundRest replaces the last item's pause);
+ * after the last round, coolRest (if there is a cool-down).
  * No pause at the very end; zero-second steps are left out.
  */
 export function timerSteps(t) {
@@ -41,15 +42,16 @@ export function timerSteps(t) {
     push({ type: 'rest', part: 'warm', round: 0, sec: restOf(it) });
   }
   const main = byPart('main');
+  const cool = byPart('cool');
   const rounds = Math.max(1, Math.round(Number(t.rounds) || 1));
   for (let r = 0; r < rounds && main.length; r++) {
     main.forEach(({ it, i }, k) => {
       push({ type: 'work', i, part: 'main', round: r, set: Math.min(r, (it.sets?.length || 1) - 1), sec: secOf(it) });
       const last = k === main.length - 1;
-      push({ type: 'rest', part: 'main', round: r, sec: last ? (r < rounds - 1 ? restOf({ rest: t.roundRest }) : 0) : restOf(it) });
+      push({ type: 'rest', part: 'main', round: r, sec: !last ? restOf(it) : r < rounds - 1 ? restOf({ rest: t.roundRest }) : cool.length ? restOf({ rest: t.coolRest }) : 0 });
     });
   }
-  for (const { it, i } of byPart('cool')) {
+  for (const { it, i } of cool) {
     push({ type: 'work', i, part: 'cool', round: 0, set: 0, sec: secOf(it) });
     push({ type: 'rest', part: 'cool', round: 0, sec: restOf(it) });
   }

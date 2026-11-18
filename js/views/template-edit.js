@@ -67,13 +67,14 @@ function fromTemplate(doc, t, key) {
   if (isTimed(t)) {
     return {
       key, id: t.id, name: t.dayName ?? t.name, mode: 'timer', rounds: String(t.rounds ?? 1), roundRest: String(t.roundRest ?? 0),
+      coolRest: String(t.coolRest ?? 0),
       items: t.items.map((it) => ({
         ex: it.ex, part: it.part ?? 'main', sec: String(it.sets?.[0]?.sec ?? ''), rest: String(it.rest ?? 0), note: it.note ?? '',
       })),
     };
   }
   return {
-    key, id: t.id, name: t.dayName ?? t.name, mode: 'normal', rounds: '3', roundRest: '60',
+    key, id: t.id, name: t.dayName ?? t.name, mode: 'normal', rounds: '3', roundRest: '60', coolRest: '0',
     items: t.items.map((it, i) => {
       const shape = shapeOf(doc, it.ex);
       return {
@@ -89,7 +90,7 @@ function fromTemplate(doc, t, key) {
 
 const blank = (key, p) => ({
   key, id: null, name: nextDayName(p.id), items: [],      // same default as the store gives a day saved without a name
-  mode: 'normal', rounds: '3', roundRest: '60',
+  mode: 'normal', rounds: '3', roundRest: '60', coolRest: '0',
 });
 
 function newItem(doc, ex) {
@@ -182,6 +183,7 @@ function validateTimed(doc, d) {
   const out = [];
   if (!posInt(d.rounds) || Number(d.rounds) > 99) out.push('I giri devono essere da 1 a 99.');
   if (!isInt(d.roundRest) || Number(d.roundRest) > 3600) out.push('La pausa tra i giri deve essere da 0 a 3600 secondi.');
+  if (!isInt(d.coolRest ?? '0') || Number(d.coolRest ?? 0) > 3600) out.push('La pausa prima del defaticamento deve essere da 0 a 3600 secondi.');
   if (!d.items.some((it) => it.part === 'main')) out.push('Aggiungi almeno un esercizio al circuito.');
   d.items.forEach((it) => {
     const label = resolveExercise(doc, it.ex)?.name ?? 'Esercizio';
@@ -198,7 +200,7 @@ function buildTimed(d) {
     ex: it.ex, group: null, part: it.part, note: it.note.trim(), rest: Number(it.rest),
     sets: Array.from({ length: it.part === 'main' ? rounds : 1 }, () => ({ sec: Number(it.sec) })),
   }));
-  return { dayName: d.name.trim(), items, mode: 'timer', rounds, roundRest: Number(d.roundRest) };
+  return { dayName: d.name.trim(), items, mode: 'timer', rounds, roundRest: Number(d.roundRest), coolRest: Number(d.coolRest ?? 0) };
 }
 
 /** Day fields the form edits: name, type and exercises (the look comes from the scheda). */
@@ -365,7 +367,7 @@ function openRowMenu(doc, d, i, redraw) {
 function draftMinutes(d) {
   const ok = (v, fallback) => (isInt(v) ? v : fallback);
   return timerMinutes(buildTimed({
-    ...d, rounds: posInt(d.rounds) ? d.rounds : '1', roundRest: ok(d.roundRest, '0'),
+    ...d, rounds: posInt(d.rounds) ? d.rounds : '1', roundRest: ok(d.roundRest, '0'), coolRest: ok(d.coolRest ?? '0', '0'),
     items: d.items.filter((it) => posInt(it.sec)).map((it) => ({ ...it, rest: ok(it.rest, '0') })),
   }));
 }
@@ -378,6 +380,7 @@ function timedBody(doc, d) {
         <label class="field">Giri del circuito${input('data-f="rounds" inputmode="numeric"', d.rounds)}</label>
         <label class="field">Pausa tra i giri (s)${input('data-f="roundRest" inputmode="numeric"', d.roundRest)}</label>
       </div>
+      <label class="field">Pausa prima del defaticamento (s)${input('data-f="coolRest" inputmode="numeric"', d.coolRest ?? '0')}</label>
       <small class="muted">Riscaldamento e defaticamento si fanno una volta; il circuito si ripete per i giri indicati.<span class="mins">${mins ? ` Durata totale: circa ${mins} min.` : ''}</span></small>
     </div>
     ${PARTS.map((part) => {

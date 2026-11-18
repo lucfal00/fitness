@@ -326,19 +326,21 @@ export function saveScheda(f) {
   return id;
 }
 
-/** Day type fields: mode 'timer' with rounds (1–99) and roundRest (0–3600 s), or a normal day (fields removed). */
-function setMode(t, { mode, rounds, roundRest }) {
+/** Day type fields: mode 'timer' with rounds (1–99), roundRest and coolRest (0–3600 s), or a normal day (fields removed). */
+function setMode(t, { mode, rounds, roundRest, coolRest }) {
   if (mode === undefined) return;
   if (mode === 'timer') {
     Object.assign(t, {
       mode: 'timer',
       rounds: Math.min(99, Math.max(1, Math.round(Number(rounds)) || 1)),
       roundRest: Math.min(3600, Math.max(0, Math.round(Number(roundRest)) || 0)),
+      coolRest: Math.min(3600, Math.max(0, Math.round(Number(coolRest)) || 0)),
     });
   } else {
     delete t.mode;
     delete t.rounds;
     delete t.roundRest;
+    delete t.coolRest;
   }
 }
 

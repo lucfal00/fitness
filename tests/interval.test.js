@@ -47,3 +47,10 @@ test('sideTag: side or direction from the first part of the note', async () => {
   for (const [note, tag] of Object.entries(cases)) assert.equal(sideTag(note), tag, note);
   assert.equal(sideTag(undefined), '');
 });
+
+test('timerSteps: coolRest is the pause after the last round, only when a cool-down follows', () => {
+  assert.deepEqual(brief(timerSteps(day({ coolRest: 45 }))).slice(-3), ['2:1:30', 'p45', '3:0:60']);
+  assert.equal(totalSec(timerSteps(day({ coolRest: 45 }))), totalSec(timerSteps(day())) + 45);
+  const noCool = day({ coolRest: 45, items: day().items.filter((it) => it.part !== 'cool') });
+  assert.equal(brief(timerSteps(noCool)).at(-1), '2:1:30');
+});
