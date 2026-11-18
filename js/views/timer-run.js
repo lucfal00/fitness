@@ -97,7 +97,7 @@ function schedule(replace = true) {
   if (x.type === 'work' && x.sec > HALF_FROM && left > x.sec / 2) scheduleTone(left - x.sec / 2);
   for (let k = 1; k <= WARN; k++) if (left > k) scheduleTone(left - k);
   const last = st.idx === st.steps.length - 1;
-  scheduleTone(left, last ? 660 : 1320, 0.5, 0.8);
+  scheduleTone(left, last ? 660 : 1320, 0.5, 0.9);
 }
 
 function step() {
@@ -157,7 +157,7 @@ function jump(k) {
   st.startedAt = Date.now();
   st.leftMs = st.steps[st.idx].sec * 1000;
   saveIdx();
-  if (!st.paused) scheduleTone(0, 1320, 0.3, 0.6);
+  if (!st.paused) scheduleTone(0, 1320, 0.3, 0.75);
   schedule();
   paint();
 }

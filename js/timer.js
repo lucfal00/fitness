@@ -139,25 +139,36 @@ function heardNow() {
   return Number.isFinite(heard) && Math.abs(heard - now) <= 0.5 ? heard : now;
 }
 
-/** Tone at `delaySec` from now on the audio clock; silent when audio is locked or unavailable. A 5 ms attack and an
- *  exponential release keep it free of clicks. */
-export function scheduleTone(delaySec, freq = 880, dur = 0.15, vol = 0.6) {
+const EDGE = 0.4;                     // share of square wave over the sine: its odd harmonics (3f, 5f) fall where the ear
+                                      // is most sensitive, so the beep cuts through music without a higher peak
+
+/** Tone at `delaySec` from now on the audio clock; silent when audio is locked or unavailable. A sine with some square
+ *  wave on top, peak kept at or below 1 (no clipping); a 5 ms attack and an exponential release keep it free of clicks. */
+export function scheduleTone(delaySec, freq = 880, dur = 0.15, vol = 0.75) {
   try {
     if (!ctx) return;
     if (ctx.state !== 'running') ctx.resume().catch(() => {});
     const at = Math.max(ctx.currentTime, heardNow() + Math.max(0, delaySec));
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0, at);
-    gain.gain.linearRampToValueAtTime(vol, at + 0.005);
-    gain.gain.exponentialRampToValueAtTime(0.001, at + dur);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(at);
-    osc.stop(at + dur);
-    const item = { osc, at };
+    const peak = Math.min(1, vol * (1 + EDGE));
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, at);
+    env.gain.linearRampToValueAtTime(1, at + 0.005);
+    env.gain.exponentialRampToValueAtTime(0.001, at + dur);
+    env.connect(ctx.destination);
+    const oscs = [['sine', peak / (1 + EDGE)], ['square', peak * EDGE / (1 + EDGE)]].map(([type, g]) => {
+      const osc = ctx.createOscillator();
+      const mix = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      mix.gain.value = g;
+      osc.connect(mix).connect(env);
+      osc.start(at);
+      osc.stop(at + dur);
+      return osc;
+    });
+    const item = { osc: { stop: () => oscs.forEach((o) => { try { o.stop(); } catch { /* already stopped */ } }) }, at };
     scheduled.add(item);
-    osc.onended = () => scheduled.delete(item);
+    oscs[0].onended = () => scheduled.delete(item);
   } catch { /* ignore */ }
 }
 
