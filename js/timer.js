@@ -139,37 +139,60 @@ function heardNow() {
   return Number.isFinite(heard) && Math.abs(heard - now) <= 0.5 ? heard : now;
 }
 
-const EDGE = 0.4;                     // share of square wave over the sine: its odd harmonics (3f, 5f) fall where the ear
-                                      // is most sensitive, so the beep cuts through music without a higher peak
-
-/** Tone at `delaySec` from now on the audio clock; silent when audio is locked or unavailable. A sine with some square
- *  wave on top, peak kept at or below 1 (no clipping); a 5 ms attack and an exponential release keep it free of clicks. */
-export function scheduleTone(delaySec, freq = 880, dur = 0.15, vol = 0.75) {
+/** Tone at `delaySec` from now on the audio clock; silent when audio is locked or unavailable. A pure sine (the sound
+ *  of the first versions), peak `vol` kept at or below 1 (no clipping); a 5 ms attack and an exponential release keep
+ *  it free of clicks. */
+export function scheduleTone(delaySec, freq = 880, dur = 0.15, vol = 0.95) {
   try {
     if (!ctx) return;
     if (ctx.state !== 'running') ctx.resume().catch(() => {});
     const at = Math.max(ctx.currentTime, heardNow() + Math.max(0, delaySec));
-    const peak = Math.min(1, vol * (1 + EDGE));
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0, at);
-    env.gain.linearRampToValueAtTime(1, at + 0.005);
-    env.gain.exponentialRampToValueAtTime(0.001, at + dur);
-    env.connect(ctx.destination);
-    const oscs = [['sine', peak / (1 + EDGE)], ['square', peak * EDGE / (1 + EDGE)]].map(([type, g]) => {
-      const osc = ctx.createOscillator();
-      const mix = ctx.createGain();
-      osc.type = type;
-      osc.frequency.value = freq;
-      mix.gain.value = g;
-      osc.connect(mix).connect(env);
-      osc.start(at);
-      osc.stop(at + dur);
-      return osc;
-    });
-    const item = { osc: { stop: () => oscs.forEach((o) => { try { o.stop(); } catch { /* already stopped */ } }) }, at };
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, at);
+    gain.gain.linearRampToValueAtTime(Math.min(1, vol), at + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, at + dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(at);
+    osc.stop(at + dur);
+    const item = { osc, at };
     scheduled.add(item);
-    oscs[0].onended = () => scheduled.delete(item);
+    osc.onended = () => scheduled.delete(item);
   } catch { /* ignore */ }
+}
+
+// ---- Voice ----------------------------------------------------------------
+
+/** Italian voice of the device: a local one first (works offline, starts at once). */
+function italianVoice() {
+  const all = globalThis.speechSynthesis?.getVoices?.() ?? [];
+  const it = all.filter((v) => /^it/i.test(v.lang));
+  return it.find((v) => v.localService) ?? it[0] ?? null;
+}
+
+/** Say `text` aloud (what was being said is cut); silent where speech synthesis is missing. */
+export function say(text, volume = 1) {
+  try {
+    const s = globalThis.speechSynthesis;
+    if (!s || typeof SpeechSynthesisUtterance === 'undefined') return;
+    s.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'it-IT';
+    const v = italianVoice();
+    if (v) u.voice = v;
+    u.rate = 1.05;
+    u.volume = volume;
+    s.speak(u);
+  } catch { /* no voice */ }
+}
+
+/** iOS speaks only after a first utterance inside a user gesture: a silent one (call it from the tap on ▶). */
+export const unlockVoice = () => say(' ', 0);
+
+/** Stop speaking. */
+export function hush() {
+  try { globalThis.speechSynthesis?.cancel(); } catch { /* ignore */ }
 }
 
 /** Cancel the scheduled tones that have not started yet (one already sounding finishes). */

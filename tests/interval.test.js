@@ -1,6 +1,32 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { timerSteps, timerMinutes, totalSec, advance, clock, isTimed } from '../js/interval.js';
+import { timerSteps, timerMinutes, totalSec, advance, clock, isTimed, voiceCue, speakSec } from '../js/interval.js';
+
+test('voiceCue: in a pause after the change beep; before a pause too short, near the end of the exercise', () => {
+  const W = (i, sec, part = 'main', round = 0) => ({ type: 'work', i, part, round, set: 0, sec });
+  const P = (sec, part = 'main', round = 0) => ({ type: 'rest', part, round, sec });
+  const name = (i) => ['Squat', 'Plank', 'Plank laterale, fianco destro', 'Respiro'][i];
+  const steps = [{ type: 'prep', sec: 5, part: 'prep', round: 0 }, W(0, 40), P(20), W(1, 45), P(5), W(2, 30), P(60),
+    W(0, 40, 'main', 1), W(3, 60, 'cool')];
+  assert.equal(voiceCue(steps, 0, name), null);                               // 5 s start: no room before the 3 beeps
+  assert.equal(voiceCue(steps, 1, name), null);                               // said in the 20 s pause instead
+  assert.deepEqual(voiceCue(steps, 2, name), { k: 3, text: 'Prossimo: Plank', leftAt: 19.3 });
+  const c = voiceCue(steps, 3, name);                                         // the 5 s pause is too short
+  assert.equal(c.k, 5);
+  assert.equal(c.text, 'Prossimo: Plank laterale, fianco destro');
+  assert.ok(Math.abs(c.leftAt - speakSec(c.text) - 3.4) < 1e-9);             // ends 0.4 s before the last 3 beeps
+  assert.equal(voiceCue(steps, 6, name).text, 'Giro 2. Prossimo: Squat');
+  assert.equal(voiceCue(steps, 7, name).text, 'Defaticamento. Prossimo: Respiro'); // no pause: during the squat
+  assert.equal(voiceCue(steps, 8, name), null);                               // nothing after the last step
+});
+
+test('voiceCue: moved before the halfway beep when they would overlap; none in a too short exercise', () => {
+  const name = () => 'x'.repeat(200);
+  const d = speakSec(`Prossimo: ${'x'.repeat(200)}`);
+  const steps = [{ type: 'work', i: 0, part: 'main', round: 0, sec: 40 }, { type: 'work', i: 1, part: 'main', round: 0, sec: 8 }];
+  assert.ok(Math.abs(voiceCue(steps, 0, name).leftAt - (20 + 0.3 + d)) < 1e-9); // ends 0.3 s before the beep at 20 s
+  assert.equal(voiceCue([steps[1], steps[0]], 0, name), null);                // 8 s cannot hold it
+});
 
 const item = (ex, part, sec, rest, n = 1) => ({ ex, part, rest, sets: Array.from({ length: n }, () => ({ sec })) });
 const day = (o = {}) => ({

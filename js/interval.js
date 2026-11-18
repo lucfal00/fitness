@@ -86,6 +86,49 @@ export function advance(steps, idx, startedAt, now) {
   return { idx: i, left: Math.ceil((t0 + steps[i].sec * 1000 - now) / 1000), done, finished: false, startedAt: t0 };
 }
 
+// ---- Voice announcements --------------------------------------------------------------
+
+/** Seconds a cue takes to say (Italian speech ≈ 13 characters a second, plus the engine's start). */
+export const speakSec = (text) => 0.4 + String(text).length / 13;
+
+/** What is said for work step k: the part or round it opens, then "Prossimo: <name>" (nameOf(i) gives the name). */
+export function cueText(steps, k, nameOf) {
+  const w = steps[k];
+  let j = k - 1;
+  while (j >= 0 && steps[j].type !== 'work') j--;
+  const p = steps[j];
+  let pre = '';
+  if (p && w.part === 'main' && p.part !== 'main') pre = 'Circuito. ';
+  else if (p && w.part === 'main' && p.round !== w.round) pre = `Giro ${w.round + 1}. `;
+  else if (p && w.part === 'cool' && p.part !== 'cool') pre = 'Defaticamento. ';
+  return `${pre}Prossimo: ${nameOf(w.i)}`;
+}
+
+/**
+ * Voice announcement of the next exercise during step idx: { k (work step announced), text, leftAt } — to be said when
+ * the step's seconds left reach leftAt — or null. Each exercise is announced once, never over a beep:
+ * - in a pause (or the start), right after the change beep, if it ends before the last `warn` beeps;
+ * - otherwise (no pause, or one too short) near the end of the exercise before: ending just before its last beeps,
+ *   moved before its halfway beep if the two would overlap; never in its first second.
+ */
+export function voiceCue(steps, idx, nameOf, { warn = 3, halfFrom = 30 } = {}) {
+  const x = steps[idx];
+  if (!x) return null;
+  let k = idx + 1;
+  while (k < steps.length && steps[k].type !== 'work') k++;
+  if (k >= steps.length) return null;
+  const text = cueText(steps, k, nameOf);
+  const dur = speakSec(text);
+  const fitsPause = (r) => r.sec - (r.type === 'prep' ? 0.3 : 0.7) - warn - 0.3 >= dur;
+  if (x.type !== 'work') return fitsPause(x) ? { k, text, leftAt: x.sec - (x.type === 'prep' ? 0.3 : 0.7) } : null;
+  const r = steps[idx + 1];
+  if (r.type !== 'work' && fitsPause(r)) return null;                    // said in the pause
+  let leftAt = warn + 0.4 + dur;
+  const half = x.sec > halfFrom ? x.sec / 2 : null;
+  if (half != null && half > leftAt - dur - 0.3 && half < leftAt + 0.3) leftAt = half + 0.3 + dur;
+  return leftAt <= x.sec - 1 ? { k, text, leftAt } : null;
+}
+
 /** "m:ss". */
 export function clock(sec) {
   const s = Math.max(0, Math.round(sec));

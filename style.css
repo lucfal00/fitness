@@ -663,6 +663,7 @@ body.timer-on main { padding: 0; max-width: none; }
   color: var(--muted); font: inherit; font-size: .8rem; }
 .tr-sound button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-strong); }
 .tr-sound small { grid-column: 1 / -1; color: var(--muted); font-size: .75rem; }
+.tr-sound .tr-voice { grid-column: 1 / -1; }
 .tr-note:empty { display: none; }
 .tr-fig { display: flex; justify-content: center; align-items: flex-end; gap: 14px; max-width: 100%; margin: 2px 0; transition: opacity .3s ease; }
 .fig-view { display: flex; flex-direction: column; align-items: center; min-width: 0; }

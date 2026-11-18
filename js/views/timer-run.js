@@ -6,8 +6,8 @@
 import { getDoc, updateSession, finishSession, discardSession, isReadOnly, setSetting } from '../store.js';
 import { workoutLabel, schedaOf } from '../logic.js';
 import { resolveExercise } from '../library.js';
-import { timerSteps, totalSec, advance, clock, PART_LABELS, sideTag } from '../interval.js';
-import { keepAwake, unlockAudio, setAudioSession, releaseAudio, scheduleTone, cancelTones } from '../timer.js';
+import { timerSteps, totalSec, advance, clock, PART_LABELS, sideTag, voiceCue } from '../interval.js';
+import { keepAwake, unlockAudio, setAudioSession, releaseAudio, scheduleTone, cancelTones, say, unlockVoice, hush } from '../timer.js';
 import { esc, fmtKcal } from '../ui.js';
 import { sessionKcal } from '../calories.js';
 import { figureOf, mountFigure } from '../figures.js';
@@ -23,6 +23,7 @@ let tick = 0;
 let raf = 0;
 let root = null;
 let away = false;                     // the timer screen was left (its tones cancelled) while the workout went on
+let spoken = -1;                      // step whose voice announcement was said (or let go)
 
 if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', () => {
@@ -39,6 +40,7 @@ if (typeof window !== 'undefined') {
 function leave() {
   away = true;
   cancelTones();
+  hush();
   if (!st || st.paused || st.finished) {           // a running workout keeps its audio: beeps go on on return
     setAudioSession('auto');
     releaseAudio();
@@ -97,7 +99,37 @@ function schedule(replace = true) {
   if (x.type === 'work' && x.sec > HALF_FROM && left > x.sec / 2) scheduleTone(left - x.sec / 2);
   for (let k = 1; k <= WARN; k++) if (left > k) scheduleTone(left - k);
   const last = st.idx === st.steps.length - 1;
-  scheduleTone(left, last ? 660 : 1320, 0.5, 0.9);
+  scheduleTone(left, last ? 660 : 1320, 0.5, 1);
+}
+
+const SIDE_WORDS = { S: 'lato sinistro', D: 'lato destro', O: 'senso orario', A: 'senso antiorario', Avanti: 'in avanti', Indietro: 'all’indietro' };
+
+/** Spoken name of item i: the exercise and, when its note starts with a side, that side ("braccio sinistro" as the
+ *  note says it when short, else "lato sinistro"). */
+function spokenName(doc, s, i) {
+  let name = exName(doc, s, i);
+  const note = s.items[i]?.note ?? '';
+  const tag = sideTag(note);
+  if (!tag) return name;
+  const head = note.split('·')[0].trim();
+  if (head.length > 30) return `${name}, ${SIDE_WORDS[tag]}`;
+  if (/braccio|gamba/i.test(head)) name = name.replace(/,\s*(un braccio|una gamba)\b.*$/i, '');
+  return `${name}, ${head.toLowerCase()}`;
+}
+
+/** Voice (if on): the next exercise, once per step, at the moment voiceCue() picks; a moment already gone (the app
+ *  was in the background, or the step was resumed late) is let go rather than said late. */
+function voice() {
+  if (!st || st.paused || st.finished || spoken === st.idx) return;
+  const doc = getDoc();
+  const s = session();
+  if (!doc.settings.voice || !s) return;
+  const c = voiceCue(st.steps, st.idx, (i) => spokenName(doc, s, i), { warn: WARN, halfFrom: HALF_FROM });
+  if (!c) { spoken = st.idx; return; }
+  const left = leftMsNow() / 1000;
+  if (left > c.leftAt) return;
+  spoken = st.idx;
+  if (left > c.leftAt - 1) say(c.text);
 }
 
 function step() {
@@ -120,6 +152,7 @@ function step() {
     paint();
     return;
   }
+  voice();
   paint();
 }
 
@@ -135,6 +168,7 @@ function endAudio() {
 function play() {
   setAudioSession(getDoc().settings.loud ? 'playback' : 'ambient');
   unlockAudio();
+  if (getDoc().settings.voice) unlockVoice();
   if (st.finished) return;
   st.started = true;
   st.startedAt = Date.now() - (st.steps[st.idx].sec * 1000 - st.leftMs);
@@ -148,6 +182,7 @@ function pause() {
   st.leftMs = Math.max(0, leftMsNow());
   st.paused = true;
   cancelTones();
+  hush();
   paint();
 }
 
@@ -156,8 +191,10 @@ function jump(k) {
   st.idx = Math.max(0, Math.min(k, st.steps.length - 1));
   st.startedAt = Date.now();
   st.leftMs = st.steps[st.idx].sec * 1000;
+  spoken = -1;
+  hush();
   saveIdx();
-  if (!st.paused) scheduleTone(0, 1320, 0.3, 0.75);
+  if (!st.paused) scheduleTone(0, 1320, 0.3, 0.85);
   schedule();
   paint();
 }
@@ -396,7 +433,8 @@ export function render(el, { doc, param }) {
       <div class="tr-sound" role="group" aria-label="Suono">
         <button type="button" data-act="loud" data-v="0" aria-pressed="${!doc.settings.loud}">Musica sotto</button>
         <button type="button" data-act="loud" data-v="1" aria-pressed="${!!doc.settings.loud}">Bip anche in silenzioso</button>
-        <small>${doc.settings.loud ? 'La musica di altre app si ferma' : 'Con il silenzioso attivo non senti i bip'}</small></div>
+        <small>${doc.settings.loud ? 'La musica di altre app si ferma' : 'Con il silenzioso attivo non senti i bip'}</small>
+        <button type="button" class="tr-voice" data-act="voice" aria-pressed="${!!doc.settings.voice}">Voce: annuncia il prossimo esercizio</button></div>
       <div class="tr-next"></div>
     </div>
     <footer class="tr-foot">
@@ -424,6 +462,11 @@ export function render(el, { doc, param }) {
     else if (act === 'end') end();
     else if (act === 'save') save();
     else if (act === 'loud') setSetting('loud', b.dataset.v === '1');   // the view is drawn again with the choice
+    else if (act === 'voice') {
+      setSetting('voice', !getDoc().settings.voice);
+      b.setAttribute('aria-pressed', String(!!getDoc().settings.voice));
+      if (getDoc().settings.voice) say('Voce attiva');                // inside the tap: also unlocks speech on iOS
+    }
     else if (act === 'rpe') {
       const v = +b.dataset.v;
       st.rpe = st.rpe === v ? null : v;
