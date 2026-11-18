@@ -725,7 +725,11 @@ body.timer-on main { padding: 0; max-width: none; }
 .tlist.part-main { --part: var(--accent); }
 .tlist.part-cool { --part: var(--cool); }
 .trows { margin: 0 0 8px; padding: 0; list-style: none; }
-.trow, .thead { display: grid; grid-template-columns: minmax(0, 1fr) 54px 54px 40px; gap: 6px; align-items: center; }
+.trow, .thead { display: grid; grid-template-columns: 22px minmax(0, 1fr) 54px 54px 40px; gap: 6px; align-items: center; }
+.trow .grip { color: var(--muted); font-size: 1.1rem; text-align: center; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.trow .tname { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.trows.sorting .trow { transition: transform .15s ease; }
+.trows .trow.dragging { position: relative; z-index: 2; transition: none; background: var(--card, var(--bg)); box-shadow: 0 6px 18px rgba(0, 0, 0, .35); border-radius: 10px; cursor: grabbing; }
 .trow { padding: 6px 0; border-top: 1px solid var(--line); }
 .thead { padding: 2px 0 4px; font-size: .72rem; color: var(--muted); text-align: center; }
 .tname { min-width: 0; }

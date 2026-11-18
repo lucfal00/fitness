@@ -167,6 +167,11 @@ const FIGURES = {
       [124, 110, 112, 113, 70, 115, 131, 106, 150, 100, 131, 106, 150, 100, 45, 116, 20, 117, 45, 116, 20, 117],
       [124, 110, 112, 113, 70, 115, 118, 105, 136, 102, 118, 105, 136, 102, 45, 116, 20, 117, 45, 116, 20, 117],
       [124, 110, 112, 113, 70, 115, 100, 107, 118, 106, 100, 107, 118, 106, 45, 116, 20, 117, 45, 116, 20, 117]] } },
+  // overhead triceps stretch, seen from behind: one elbow up by the head, its hand down the upper back; the other hand
+  // rests on that elbow (palm open, no grip) and eases it back. "destro" in the note mirrors it
+  tricipite_sopra_testa: { view: 'back', sided: true, rig: true, hold: true, ms: 1600, k: [
+    back({ EL: [72, 64, 0], WL: [71, 88, 0], ER: [108, 64, 0], WR: [109, 88, 0] }),
+    back({ H: [91, 31, 0], EL: [81.55, 21.24, 0], WL: [93.9, 41.84, 0], ER: [108, 20, 0], WR: [84, 21, 0] })] },
   wall_slide: { view: 'back', ms: 1200, k: [
     back({ EL: [68, 64, 0], WL: [68, 40, 0], ER: [112, 64, 0], WR: [112, 40, 0] }),
     back({ EL: [66, 34, 0], WL: [58, 12, 0], ER: [114, 34, 0], WR: [122, 12, 0] })] },

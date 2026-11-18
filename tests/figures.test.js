@@ -10,7 +10,7 @@ const len = (K, a, b) => Math.hypot(K[a] - K[b], K[a + 1] - K[b + 1]);
 const RIG = ['curl_bicipiti_un_braccio', 'rematore_seduto_elastico', 'kickback_elastico', 'plank_gamba_alternata', 'curl_bicipiti_elastico', 'spinta_petto_elastico',
   'curl_femorali_dischi', 'abduzione_fianco', 'plank_laterale_abduzione', 'hip_thrust_una_gamba', 'split_squat_bulgaro', 'reverse_crunch', 'body_saw_dischi',
   'ginocchia_petto', 'gambe_al_muro'];
-const NAMED = ['alzate_laterali_elastico', 'alzata_laterale_un_braccio'];
+const NAMED = ['alzate_laterali_elastico', 'alzata_laterale_un_braccio', 'tricipite_sopra_testa'];
 const NBONES = [['SL', 'EL'], ['EL', 'WL'], ['SR', 'ER'], ['ER', 'WR'], ['PL', 'KL'], ['KL', 'FL'], ['PR', 'KR'], ['KR', 'FR']];
 const nlen = (K, a, b) => Math.hypot(K[a][0] - K[b][0], K[a][1] - K[b][1]);
 

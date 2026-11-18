@@ -321,6 +321,7 @@ function itemCard(doc, d, it, i) {
 function timedRow(doc, it, i) {
   const ex = resolveExercise(doc, it.ex);
   return `<li class="trow" data-item="${i}">
+    <span class="grip" aria-hidden="true">⠿</span>
     <span class="tname"><b>${esc(ex?.name ?? 'Esercizio rimosso')}${sideTag(it.note) ? ` <span class="tr-tag">${esc(sideTag(it.note))}</span>` : ''}</b>${it.note ? `<small>${esc(it.note)}</small>` : ''}</span>
     ${input(`data-i="${i}" data-k="sec" inputmode="numeric" aria-label="Lavoro in secondi, ${esc(ex?.name ?? '')}"`, it.sec)}
     ${input(`data-i="${i}" data-k="rest" inputmode="numeric" aria-label="Pausa dopo in secondi, ${esc(ex?.name ?? '')}"`, it.rest)}
@@ -363,6 +364,87 @@ function openRowMenu(doc, d, i, redraw) {
   };
 }
 
+/** Drag to reorder the rows of a timed day within their part: straight away from the grip, or after holding a row
+ *  still for a moment (so a plain swipe still scrolls). The other rows slide aside; on release the draft is reordered. */
+const HOLD_MS = 350;
+const SLOP = 8;                       // px a finger may wander while holding before it counts as a scroll
+function attachDrag(el, d, redraw) {
+  let drag = null;                    // { li, rows, from, to, y0, mids, step, id }
+  let wait = null;                    // pending long press: { timer, x, y, li, id }
+  const skip = (t) => t.closest('input, button, select, textarea, a');
+  const start = (li, y, id) => {
+    const rows = [...li.parentElement.querySelectorAll('.trow')];
+    const rects = rows.map((r) => r.getBoundingClientRect());
+    const from = rows.indexOf(li);
+    const next = rects[from + 1] ?? rects[from - 1];
+    drag = { li, rows, from, to: from, y0: y, id, mids: rects.map((r) => r.top + r.height / 2),
+      step: next ? Math.abs(next.top - rects[from].top) : rects[from].height };
+    li.classList.add('dragging');
+    li.parentElement.classList.add('sorting');
+    el.classList.add('drag-on');
+  };
+  const move = (y) => {
+    const { li, rows, from, y0, mids, step } = drag;
+    const dy = y - y0;
+    const c = mids[from] + dy;
+    let to = from;
+    for (let k = 0; k < rows.length; k++) {
+      if (k < from && c < mids[k]) { to = k; break; }
+      if (k > from && c > mids[k]) to = k;
+    }
+    drag.to = to;
+    li.style.transform = `translateY(${dy}px)`;
+    rows.forEach((r, k) => {
+      if (r === li) return;
+      const shift = from < to && k > from && k <= to ? -step : to < from && k >= to && k < from ? step : 0;
+      r.style.transform = shift ? `translateY(${shift}px)` : '';
+    });
+  };
+  const end = (commit) => {
+    if (!drag) return;
+    const { rows, from, to, li } = drag;
+    rows.forEach((r) => { r.style.transform = ''; });
+    li.classList.remove('dragging');
+    li.parentElement.classList.remove('sorting');
+    el.classList.remove('drag-on');
+    drag = null;
+    if (!commit || to === from) return;
+    const slots = rows.map((r) => +r.dataset.item);          // the part's places in the draft, in order
+    const order = slots.map((k) => d.items[k]);
+    order.splice(to, 0, order.splice(from, 1)[0]);
+    slots.forEach((k, n) => { d.items[k] = order[n]; });
+    redraw();
+  };
+  const cancelWait = () => { if (wait) clearTimeout(wait.timer); wait = null; };
+  el.onpointerdown = (e) => {
+    const li = e.target.closest('.trow');
+    if (!li || skip(e.target) || drag) return;
+    if (e.target.closest('.grip') || e.pointerType === 'mouse') {
+      e.preventDefault();
+      start(li, e.clientY, e.pointerId);
+      return;
+    }
+    cancelWait();
+    wait = { x: e.clientX, y: e.clientY, li, id: e.pointerId, timer: setTimeout(() => {
+      const w = wait;
+      wait = null;
+      start(w.li, w.y, w.id);
+    }, HOLD_MS) };
+  };
+  el.onpointermove = (e) => {
+    if (wait && e.pointerId === wait.id && Math.hypot(e.clientX - wait.x, e.clientY - wait.y) > SLOP) cancelWait();
+    if (drag && e.pointerId === drag.id) move(e.clientY);
+  };
+  el.onpointerup = (e) => { cancelWait(); if (drag && e.pointerId === drag.id) end(true); };
+  el.onpointercancel = () => { cancelWait(); end(false); };
+  // while dragging with a finger the page must not scroll (needs a non-passive listener; added once per element)
+  if (!el.dataset.dragTouch) {
+    el.dataset.dragTouch = '1';
+    el.addEventListener('touchmove', (e) => { if (el.classList.contains('drag-on')) e.preventDefault(); }, { passive: false });
+    el.addEventListener('contextmenu', (e) => { if (e.target.closest('.trow .tname, .trow .grip')) e.preventDefault(); });
+  }
+}
+
 /** Total minutes of the draft, counting only valid values. */
 function draftMinutes(d) {
   const ok = (v, fallback) => (isInt(v) ? v : fallback);
@@ -387,7 +469,7 @@ function timedBody(doc, d) {
     const rows = d.items.map((it, i) => (it.part === part ? timedRow(doc, it, i) : '')).join('');
     return `<h2 class="list-title">${PART_LABELS[part]}</h2>
       <div class="card tlist part-${part}">
-        ${rows ? `<ul class="trows"><li class="thead" aria-hidden="true"><span></span><span>Lavoro s</span><span>Pausa s</span><span></span></li>${rows}</ul>` : ''}
+        ${rows ? `<ul class="trows"><li class="thead" aria-hidden="true"><span></span><span></span><span>Lavoro s</span><span>Pausa s</span><span></span></li>${rows}</ul>` : ''}
         <button type="button" class="btn block small" data-act="add" data-part="${part}">+ Aggiungi ${part === 'main' ? 'esercizio' : PART_LABELS[part].toLowerCase()}</button>
       </div>`;
   }).join('')}`;
@@ -504,6 +586,8 @@ export function render(el, ctx) {
     }
     status();
   };
+
+  attachDrag(el, d, () => render(el, ctx));
 
   el.onclick = (e) => {
     const b = e.target.closest('button');

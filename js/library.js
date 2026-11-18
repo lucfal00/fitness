@@ -145,6 +145,7 @@ const BODY = [
   ['respiro_sdraiato', 'Respiro a pancia in su', 'addome', [], 'time'],
   ['ginocchia_petto', 'Ginocchia al petto da sdraiato', 'dorso', ['glutei'], 'time'],
   ['gambe_al_muro', 'Gambe al muro', 'femorali', [], 'time'],
+  ['tricipite_sopra_testa', 'Allungamento tricipite sopra la testa', 'tricipiti', ['spalle'], 'time'],
   // with bands hooked to wrist cuffs, discs or a sofa (nothing held in the hand)
   ['spinta_petto_elastico', 'Spinta per il petto con elastico', 'petto', ['tricipiti', 'spalle'], 'time'],
   ['alzata_laterale_un_braccio', 'Alzata laterale con elastico, un braccio', 'spalle', [], 'time'],
