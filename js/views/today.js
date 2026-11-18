@@ -14,6 +14,7 @@ import {
 import { unlockAudio, skipRest } from '../timer.js';
 import { esc, safeColor, fmtDay, fmtKg, fmtNum, parseNum, fmtFull, fmtKcal, DAY_LETTERS } from '../ui.js';
 import { openSheet } from './exercises.js';
+import { openPreview } from './preview.js';
 import { setCounts, fmtMinutes } from './session-rows.js';
 import { sessionKcal, dayKcal, templateKcal } from '../calories.js';
 
@@ -91,13 +92,16 @@ function schedaCard(doc, p, ro, day, preview = false) {
   } else if (days.length === 1) {
     const t = days[0];
     body = `<p class="muted sc-meta">${esc(dayMeta(doc, t, day))}</p>
-      ${preview ? '' : `<button type="button" class="btn primary block sc-go" data-act="start" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>${PLAY}Inizia</button>`}`;
+      <div class="sc-btns"><button type="button" class="btn sc-go" data-act="peek" data-tpl="${esc(t.id)}">${icon('eye', 'ic')}Anteprima</button>
+      ${preview ? '' : `<button type="button" class="btn primary sc-go" data-act="start" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>${PLAY}Inizia</button>`}</div>`;
   } else {
     const row = (t) => {
       const inner = `<span class="grow"><b>${esc(t.dayName ?? t.name)}</b><small>${esc(dayMeta(doc, t, day))}</small></span>
         ${t.id === lastId ? '<span class="pill">Ultimo fatto</span>' : ''}`;
-      return preview ? `<li><div class="sc-day">${inner}</div></li>`
-        : `<li><button type="button" class="sc-day" data-act="start" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>${inner}<span class="sc-play">${PLAY}</span></button></li>`;
+      const peek = `<button type="button" class="sc-peek" data-act="peek" data-tpl="${esc(t.id)}" aria-label="Anteprima ${esc(t.dayName ?? t.name)}">${icon('eye', 'ic')}</button>`;
+      return preview ? `<li class="sc-row"><div class="sc-day">${inner}</div>${peek}</li>`
+        : `<li class="sc-row"><button type="button" class="sc-day" data-act="start" data-tpl="${esc(t.id)}" ${ro ? 'disabled' : ''}>${inner}</button>${peek}
+          <button type="button" class="sc-play" data-act="start" data-tpl="${esc(t.id)}" aria-label="Inizia ${esc(t.dayName ?? t.name)}" ${ro ? 'disabled' : ''}>${PLAY}</button></li>`;
     };
     body = `${preview ? '' : '<p class="muted sc-meta">Che giorno fai?</p>'}<ul class="sc-days">${days.map(row).join('')}</ul>`;
   }
@@ -420,6 +424,10 @@ export function render(el, { doc, param, today }) {
     else if (act === 'next') go(addDays(day, 7), today);
     else if (act === 'today') go(today, today);
     else if (act === 'start') start(b.dataset.tpl);
+    else if (act === 'peek') {
+      const t = getDoc().templates.find((x) => x.id === b.dataset.tpl);
+      if (t) openPreview(getDoc(), t);
+    }
     else if (act === 'pick') openActivityPicker(day);
     else if (act === 'act-edit') {
       const s = getDoc().sessions.find((x) => x.id === b.dataset.id);
