@@ -658,12 +658,15 @@ body.timer-on main { padding: 0; max-width: none; }
   vertical-align: .28em;
 }
 .tname .tr-tag { font-size: .7rem; vertical-align: .1em; }
-.tr-sound { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(100%, 340px); margin-top: 4px; }
-.tr-sound button { min-height: 40px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 999px; background: none;
-  color: var(--muted); font: inherit; font-size: .8rem; }
-.tr-sound button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-strong); }
-.tr-sound small { grid-column: 1 / -1; color: var(--muted); font-size: .75rem; }
-.tr-sound .tr-voice { grid-column: 1 / -1; }
+.tr-figrow { position: relative; display: flex; justify-content: center; width: 100%; min-height: 44px; padding: 0 44px; box-sizing: border-box; }
+.tr-figrow .tr-fig { min-width: 0; }
+.tr-figrow .fig-view svg { max-width: 100%; }                   /* wide (lying) figures shrink rather than go under the speaker */
+.tr-voice {                                       /* speaker in the corner beside the figure: voice on / off */
+  position: absolute; top: 0; right: 0; width: 44px; height: 44px; padding: 10px; border: 0; background: none; color: var(--muted);
+}
+.tr-voice svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.tr-voice[aria-pressed="true"] { color: var(--text); }
+.tr-hint small { display: block; margin-top: 4px; font-size: .75rem; }
 .tr-note:empty { display: none; }
 .tr-fig { display: flex; justify-content: center; align-items: flex-end; gap: 14px; max-width: 100%; margin: 2px 0; transition: opacity .3s ease; }
 .fig-view { display: flex; flex-direction: column; align-items: center; min-width: 0; }

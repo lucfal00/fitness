@@ -28,6 +28,20 @@ test('voiceCue: moved before the halfway beep when they would overlap; none in a
   assert.equal(voiceCue([steps[1], steps[0]], 0, name), null);                // 8 s cannot hold it
 });
 
+test('voiceCue: "Cambio" for the same exercise on the other side, not across a round or part', () => {
+  const W = (i, part = 'main', round = 0) => ({ type: 'work', i, part, round, set: 0, sec: 30 });
+  const ex = ['curl', 'curl', 'plank', 'plank'];
+  const isSwitch = (i, j) => ex[i] === ex[j];
+  const steps = [W(0), { type: 'rest', part: 'main', round: 0, sec: 15 }, W(1), W(2), W(3), W(2, 'main', 1), W(3, 'main', 1)];
+  const say = (idx) => voiceCue(steps, idx, (i) => `Esercizio ${i}`, { isSwitch })?.text;
+  assert.equal(say(1), 'Cambio');                                             // curl left -> right, in the pause
+  assert.equal(say(2), 'Prossimo: Esercizio 2');                              // another exercise
+  assert.equal(say(3), 'Cambio');
+  assert.equal(say(4), 'Giro 2. Prossimo: Esercizio 2');                      // a new round is always said in full
+  assert.equal(say(5), 'Cambio');
+  assert.equal(voiceCue(steps, 1, (i) => `Esercizio ${i}`).text, 'Prossimo: Esercizio 1'); // no isSwitch: full name
+});
+
 const item = (ex, part, sec, rest, n = 1) => ({ ex, part, rest, sets: Array.from({ length: n }, () => ({ sec })) });
 const day = (o = {}) => ({
   mode: 'timer', rounds: 2, roundRest: 60,

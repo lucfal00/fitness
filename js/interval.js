@@ -91,8 +91,9 @@ export function advance(steps, idx, startedAt, now) {
 /** Seconds a cue takes to say (Italian speech ≈ 13 characters a second, plus the engine's start). */
 export const speakSec = (text) => 0.4 + String(text).length / 13;
 
-/** What is said for work step k: the part or round it opens, then "Prossimo: <name>" (nameOf(i) gives the name). */
-export function cueText(steps, k, nameOf) {
+/** What is said for work step k: the part or round it opens, then "Prossimo: <name>" (nameOf(i) gives the name);
+ *  only "Cambio" when it follows the same exercise on the other side (isSwitch(prevItem, item)) in the same part and round. */
+export function cueText(steps, k, nameOf, isSwitch = () => false) {
   const w = steps[k];
   let j = k - 1;
   while (j >= 0 && steps[j].type !== 'work') j--;
@@ -101,6 +102,7 @@ export function cueText(steps, k, nameOf) {
   if (p && w.part === 'main' && p.part !== 'main') pre = 'Circuito. ';
   else if (p && w.part === 'main' && p.round !== w.round) pre = `Giro ${w.round + 1}. `;
   else if (p && w.part === 'cool' && p.part !== 'cool') pre = 'Defaticamento. ';
+  if (p && !pre && p.part === w.part && p.round === w.round && isSwitch(p.i, w.i)) return 'Cambio';
   return `${pre}Prossimo: ${nameOf(w.i)}`;
 }
 
@@ -111,13 +113,13 @@ export function cueText(steps, k, nameOf) {
  * - otherwise (no pause, or one too short) near the end of the exercise before: ending just before its last beeps,
  *   moved before its halfway beep if the two would overlap; never in its first second.
  */
-export function voiceCue(steps, idx, nameOf, { warn = 3, halfFrom = 30 } = {}) {
+export function voiceCue(steps, idx, nameOf, { warn = 3, halfFrom = 30, isSwitch } = {}) {
   const x = steps[idx];
   if (!x) return null;
   let k = idx + 1;
   while (k < steps.length && steps[k].type !== 'work') k++;
   if (k >= steps.length) return null;
-  const text = cueText(steps, k, nameOf);
+  const text = cueText(steps, k, nameOf, isSwitch);
   const dur = speakSec(text);
   const fitsPause = (r) => r.sec - (r.type === 'prep' ? 0.3 : 0.7) - warn - 0.3 >= dur;
   if (x.type !== 'work') return fitsPause(x) ? { k, text, leftAt: x.sec - (x.type === 'prep' ? 0.3 : 0.7) } : null;

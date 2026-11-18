@@ -24,6 +24,12 @@ let raf = 0;
 let root = null;
 let away = false;                     // the timer screen was left (its tones cancelled) while the workout went on
 let spoken = -1;                      // step whose voice announcement was said (or let go)
+let cueTimer = 0;                     // the voice announcement about to be said
+/** Stop the voice; an announcement not said yet is left to say again (on resume, if still in time). */
+function quiet() {
+  if (cueTimer) { clearTimeout(cueTimer); cueTimer = 0; spoken = -1; }
+  hush();
+}
 
 if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', () => {
@@ -40,7 +46,7 @@ if (typeof window !== 'undefined') {
 function leave() {
   away = true;
   cancelTones();
-  hush();
+  quiet();
   if (!st || st.paused || st.finished) {           // a running workout keeps its audio: beeps go on on return
     setAudioSession('auto');
     releaseAudio();
@@ -112,24 +118,41 @@ function spokenName(doc, s, i) {
   const tag = sideTag(note);
   if (!tag) return name;
   const head = note.split('·')[0].trim();
-  if (head.length > 30) return `${name}, ${SIDE_WORDS[tag]}`;
   if (/braccio|gamba/i.test(head)) name = name.replace(/,\s*(un braccio|una gamba)\b.*$/i, '');
+  const first = head.split(/\s+/)[0].toLowerCase();
+  if (head.length > 30 || name.toLowerCase().includes(first)) return `${name}, ${SIDE_WORDS[tag]}`;   // not "cerchi …, cerchi …"
   return `${name}, ${head.toLowerCase()}`;
 }
 
-/** Voice (if on): the next exercise, once per step, at the moment voiceCue() picks; a moment already gone (the app
- *  was in the background, or the step was resumed late) is let go rather than said late. */
+/** Voice (if on): the next exercise, once per step, at the moment voiceCue() picks — timed to the millisecond when the
+ *  200 ms tick gets close; a moment already gone (the app was in the background, or the step was resumed late) is let
+ *  go rather than said late. "Cambio" when only the side or direction changes. */
 function voice() {
   if (!st || st.paused || st.finished || spoken === st.idx) return;
   const doc = getDoc();
   const s = session();
   if (!doc.settings.voice || !s) return;
-  const c = voiceCue(st.steps, st.idx, (i) => spokenName(doc, s, i), { warn: WARN, halfFrom: HALF_FROM });
+  const isSwitch = (i, j) => s.items[i]?.ex === s.items[j]?.ex && sideTag(s.items[j]?.note) !== '';
+  const c = voiceCue(st.steps, st.idx, (i) => spokenName(doc, s, i), { warn: WARN, halfFrom: HALF_FROM, isSwitch });
   if (!c) { spoken = st.idx; return; }
-  const left = leftMsNow() / 1000;
-  if (left > c.leftAt) return;
+  const wait = leftMsNow() / 1000 - c.leftAt;
+  if (wait > 0.25) return;
   spoken = st.idx;
-  if (left > c.leftAt - 1) say(c.text);
+  if (wait < -1) return;
+  const idx = st.idx;
+  clearTimeout(cueTimer);
+  cueTimer = setTimeout(() => {
+    cueTimer = 0;
+    if (st && !st.paused && !st.finished && st.idx === idx && getDoc().settings.voice) say(c.text);
+  }, Math.max(0, wait * 1000));
+}
+
+/** The voice button: a speaker, crossed out when the voice is off. */
+function paintVoice(b, on) {
+  b.setAttribute('aria-pressed', String(on));
+  b.setAttribute('aria-label', on ? 'Voce attiva: tocca per disattivarla' : 'Voce disattivata: tocca per attivarla');
+  b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/>${on
+    ? '<path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11"/>' : '<path d="M16 9.5l5 5M21 9.5l-5 5"/>'}</svg>`;
 }
 
 function step() {
@@ -166,7 +189,7 @@ function endAudio() {
 }
 
 function play() {
-  setAudioSession(getDoc().settings.loud ? 'playback' : 'ambient');
+  setAudioSession('ambient');                             // music of other apps goes on; the silent switch mutes the beeps
   unlockAudio();
   if (getDoc().settings.voice) unlockVoice();
   if (st.finished) return;
@@ -182,7 +205,7 @@ function pause() {
   st.leftMs = Math.max(0, leftMsNow());
   st.paused = true;
   cancelTones();
-  hush();
+  quiet();
   paint();
 }
 
@@ -191,8 +214,8 @@ function jump(k) {
   st.idx = Math.max(0, Math.min(k, st.steps.length - 1));
   st.startedAt = Date.now();
   st.leftMs = st.steps[st.idx].sec * 1000;
+  quiet();
   spoken = -1;
-  hush();
   saveIdx();
   if (!st.paused) scheduleTone(0, 1320, 0.3, 0.85);
   schedule();
@@ -360,8 +383,7 @@ function paint() {
     : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>';
   pp.setAttribute('aria-label', st.paused ? (st.started ? 'Riprendi' : 'Inizia') : 'Pausa');
   box.querySelector('.tr-hint').hidden = st.started;
-  box.querySelector('.tr-sound').hidden = st.started;
-  box.querySelector('.tr-next').hidden = !st.started;           // before the start: the sound choice in its place
+  box.querySelector('.tr-next').hidden = !st.started;           // before the start: the hint in its place
 }
 
 /** Ring and segments, every frame: smooth also on short steps (the 200 ms tick only updates the text). */
@@ -423,18 +445,14 @@ export function render(el, { doc, param }) {
       <p class="tr-phase"></p>
       <h1 class="tr-name"></h1>
       <p class="tr-note"></p>
-      <div class="tr-fig" hidden></div>
+      <div class="tr-figrow"><div class="tr-fig" hidden></div>
+        <button type="button" class="tr-voice" data-act="voice"></button></div>
       <div class="tr-ring">
         <svg viewBox="0 0 240 240" aria-hidden="true"><circle class="tr-ring-bg" cx="120" cy="120" r="${R}"/>
           <circle class="tr-ring-fg" cx="120" cy="120" r="${R}" stroke-dasharray="${C}" transform="rotate(-90 120 120)"/></svg>
         <div class="tr-time" role="timer" aria-live="off"></div>
       </div>
-      <p class="tr-hint">Tocca ▶ per iniziare</p>
-      <div class="tr-sound" role="group" aria-label="Suono">
-        <button type="button" data-act="loud" data-v="0" aria-pressed="${!doc.settings.loud}">Musica sotto</button>
-        <button type="button" data-act="loud" data-v="1" aria-pressed="${!!doc.settings.loud}">Bip anche in silenzioso</button>
-        <small>${doc.settings.loud ? 'La musica di altre app si ferma' : 'Con il silenzioso attivo non senti i bip'}</small>
-        <button type="button" class="tr-voice" data-act="voice" aria-pressed="${!!doc.settings.voice}">Voce: annuncia il prossimo esercizio</button></div>
+      <p class="tr-hint">Tocca ▶ per iniziare<small>Se vuoi sentire i bip insieme alla musica togli il silenzioso del telefono</small></p>
       <div class="tr-next"></div>
     </div>
     <footer class="tr-foot">
@@ -447,6 +465,7 @@ export function render(el, { doc, param }) {
       <p class="tr-total"><span class="tr-count"></span><span class="tr-left"></span></p>
     </footer>
   </div>`;
+  paintVoice(el.querySelector('.tr-voice'), !!doc.settings.voice);
   if (!st.steps.length) {
     el.querySelector('.tr-main').innerHTML = '<p class="tr-phase">Questo giorno non ha esercizi a tempo.</p>';
     el.querySelector('.tr-foot').hidden = true;
@@ -461,11 +480,12 @@ export function render(el, { doc, param }) {
     else if (act === 'skip') forward();
     else if (act === 'end') end();
     else if (act === 'save') save();
-    else if (act === 'loud') setSetting('loud', b.dataset.v === '1');   // the view is drawn again with the choice
     else if (act === 'voice') {
-      setSetting('voice', !getDoc().settings.voice);
-      b.setAttribute('aria-pressed', String(!!getDoc().settings.voice));
-      if (getDoc().settings.voice) say('Voce attiva');                // inside the tap: also unlocks speech on iOS
+      const on = !getDoc().settings.voice;
+      setSetting('voice', on);
+      paintVoice(b, on);
+      if (on) say('Voce attiva');                                     // inside the tap: also unlocks speech on iOS
+      else quiet();
     }
     else if (act === 'rpe') {
       const v = +b.dataset.v;
